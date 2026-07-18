@@ -1,0 +1,90 @@
+# Go Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.coverprofile
+*.pprof
+__debug_bin*
+
+# Build Output
+bin/
+dist/
+build/
+out/
+
+# Go Workspace
+go.work
+go.work.sum
+
+# Dependencies
+vendor/
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Configuration Files
+*.yml
+*.yaml
+*.toml
+*.ini
+*.xlsx
+*.json
+
+# Ignore example configurations
+!*.example.*
+!*.example
+
+# Logs
+*.log
+logs/
+
+# Temporary Files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Profiling & Debug
+cpu.prof
+mem.prof
+*.trace
+
+# Docker
+.docker/
+docker-data/
+
+# IDEs and Editors
+.vscode/
+.devcontainer/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+
+# OS Generated Files
+.DS_Store
+.DS_Store?
+Thumbs.db
+desktop.ini
+
+# Project Local Directories
+# configs/
+scripts/
+data/
+# mocks/
+# uploads/
+# gitb/
+# data/
+# *.REM
+# *.rem
+# *.xlsx
+# *.csv
+# */data
+# exports/
