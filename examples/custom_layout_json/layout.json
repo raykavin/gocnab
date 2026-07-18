@@ -1,0 +1,440 @@
+{
+  "name": "example-json-240",
+  "version": "001",
+  "records": {
+    "file_header": {
+      "fields": [
+        {
+          "name": "BankCode",
+          "start": 1,
+          "end": 3,
+          "kind": "9",
+          "const": "999"
+        },
+        {
+          "name": "ServiceBatchNumber",
+          "start": 4,
+          "end": 7,
+          "kind": "9",
+          "const": "0000"
+        },
+        {
+          "name": "RecordType",
+          "start": 8,
+          "end": 8,
+          "kind": "9",
+          "const": "0"
+        },
+        {
+          "name": "Filler1",
+          "start": 9,
+          "end": 32,
+          "kind": "X"
+        },
+        {
+          "name": "CompanyRegistration",
+          "start": 33,
+          "end": 46,
+          "kind": "9",
+          "key": "company_registration"
+        },
+        {
+          "name": "CompanyName",
+          "start": 47,
+          "end": 76,
+          "kind": "X",
+          "key": "company_name"
+        },
+        {
+          "name": "Agreement",
+          "start": 77,
+          "end": 96,
+          "kind": "X",
+          "key": "agreement"
+        },
+        {
+          "name": "Branch",
+          "start": 97,
+          "end": 101,
+          "kind": "9",
+          "key": "branch"
+        },
+        {
+          "name": "AccountNumber",
+          "start": 102,
+          "end": 113,
+          "kind": "9",
+          "key": "account_number"
+        },
+        {
+          "name": "AccountCheckDigit",
+          "start": 114,
+          "end": 114,
+          "kind": "X",
+          "key": "account_check_digit"
+        },
+        {
+          "name": "FileSequenceNumber",
+          "start": 115,
+          "end": 120,
+          "kind": "9",
+          "key": "file_sequence_number"
+        },
+        {
+          "name": "Filler2",
+          "start": 121,
+          "end": 240,
+          "kind": "X"
+        }
+      ]
+    },
+    "batch_header": {
+      "fields": [
+        {
+          "name": "BankCode",
+          "start": 1,
+          "end": 3,
+          "kind": "9",
+          "const": "999"
+        },
+        {
+          "name": "ServiceBatchNumber",
+          "start": 4,
+          "end": 7,
+          "kind": "9",
+          "key": "sys.batch_number"
+        },
+        {
+          "name": "RecordType",
+          "start": 8,
+          "end": 8,
+          "kind": "9",
+          "const": "1"
+        },
+        {
+          "name": "OperationType",
+          "start": 9,
+          "end": 9,
+          "kind": "X",
+          "const": "C"
+        },
+        {
+          "name": "BatchProductCode",
+          "start": 10,
+          "end": 11,
+          "kind": "9",
+          "key": "batch_product_code"
+        },
+        {
+          "name": "BatchServiceCode",
+          "start": 12,
+          "end": 13,
+          "kind": "9",
+          "key": "batch_service_code"
+        },
+        {
+          "name": "Filler1",
+          "start": 14,
+          "end": 32,
+          "kind": "X"
+        },
+        {
+          "name": "CompanyRegistration",
+          "start": 33,
+          "end": 46,
+          "kind": "9",
+          "key": "company_registration"
+        },
+        {
+          "name": "CompanyName",
+          "start": 47,
+          "end": 76,
+          "kind": "X",
+          "key": "company_name"
+        },
+        {
+          "name": "Filler2",
+          "start": 77,
+          "end": 240,
+          "kind": "X"
+        }
+      ]
+    },
+    "segment_a": {
+      "fields": [
+        {
+          "name": "BankCode",
+          "start": 1,
+          "end": 3,
+          "kind": "9",
+          "const": "999"
+        },
+        {
+          "name": "ServiceBatchNumber",
+          "start": 4,
+          "end": 7,
+          "kind": "9",
+          "key": "sys.batch_number"
+        },
+        {
+          "name": "RecordType",
+          "start": 8,
+          "end": 8,
+          "kind": "9",
+          "const": "3"
+        },
+        {
+          "name": "SequentialNumberInBatch",
+          "start": 9,
+          "end": 13,
+          "kind": "9",
+          "key": "sys.sequence"
+        },
+        {
+          "name": "SegmentCode",
+          "start": 14,
+          "end": 14,
+          "kind": "X",
+          "const": "A"
+        },
+        {
+          "name": "MovementType",
+          "start": 15,
+          "end": 15,
+          "kind": "9",
+          "key": "movement_type"
+        },
+        {
+          "name": "Filler1",
+          "start": 16,
+          "end": 20,
+          "kind": "X"
+        },
+        {
+          "name": "BeneficiaryBranch",
+          "start": 21,
+          "end": 25,
+          "kind": "9",
+          "key": "beneficiary_branch"
+        },
+        {
+          "name": "BeneficiaryAccount",
+          "start": 26,
+          "end": 37,
+          "kind": "9",
+          "key": "beneficiary_account"
+        },
+        {
+          "name": "BeneficiaryCheckDigit",
+          "start": 38,
+          "end": 38,
+          "kind": "X",
+          "key": "beneficiary_check_digit"
+        },
+        {
+          "name": "PayeeName",
+          "start": 39,
+          "end": 68,
+          "kind": "X",
+          "key": "payee_name"
+        },
+        {
+          "name": "YourNumber",
+          "start": 69,
+          "end": 88,
+          "kind": "X",
+          "key": "your_number"
+        },
+        {
+          "name": "PaymentDate",
+          "start": 89,
+          "end": 96,
+          "kind": "9",
+          "key": "payment_date"
+        },
+        {
+          "name": "Amount",
+          "start": 97,
+          "end": 111,
+          "kind": "9",
+          "decimals": 2,
+          "key": "amount"
+        },
+        {
+          "name": "Filler2",
+          "start": 112,
+          "end": 240,
+          "kind": "X"
+        }
+      ]
+    },
+    "segment_b": {
+      "fields": [
+        {
+          "name": "BankCode",
+          "start": 1,
+          "end": 3,
+          "kind": "9",
+          "const": "999"
+        },
+        {
+          "name": "ServiceBatchNumber",
+          "start": 4,
+          "end": 7,
+          "kind": "9",
+          "key": "sys.batch_number"
+        },
+        {
+          "name": "RecordType",
+          "start": 8,
+          "end": 8,
+          "kind": "9",
+          "const": "3"
+        },
+        {
+          "name": "SequentialNumberInBatch",
+          "start": 9,
+          "end": 13,
+          "kind": "9",
+          "key": "sys.sequence"
+        },
+        {
+          "name": "SegmentCode",
+          "start": 14,
+          "end": 14,
+          "kind": "X",
+          "const": "B"
+        },
+        {
+          "name": "Filler1",
+          "start": 15,
+          "end": 17,
+          "kind": "X"
+        },
+        {
+          "name": "PayeeDocumentKind",
+          "start": 18,
+          "end": 18,
+          "kind": "9",
+          "key": "payee_document_kind"
+        },
+        {
+          "name": "PayeeDocument",
+          "start": 19,
+          "end": 32,
+          "kind": "9",
+          "key": "payee_document"
+        },
+        {
+          "name": "Filler2",
+          "start": 33,
+          "end": 240,
+          "kind": "X"
+        }
+      ]
+    },
+    "batch_trailer": {
+      "fields": [
+        {
+          "name": "BankCode",
+          "start": 1,
+          "end": 3,
+          "kind": "9",
+          "const": "999"
+        },
+        {
+          "name": "ServiceBatchNumber",
+          "start": 4,
+          "end": 7,
+          "kind": "9",
+          "key": "sys.batch_number"
+        },
+        {
+          "name": "RecordType",
+          "start": 8,
+          "end": 8,
+          "kind": "9",
+          "const": "5"
+        },
+        {
+          "name": "Filler1",
+          "start": 9,
+          "end": 17,
+          "kind": "X"
+        },
+        {
+          "name": "BatchRecordCount",
+          "start": 18,
+          "end": 23,
+          "kind": "9",
+          "key": "sys.batch_record_count"
+        },
+        {
+          "name": "BatchAmount",
+          "start": 24,
+          "end": 38,
+          "kind": "9",
+          "decimals": 2,
+          "key": "sys.batch_amount"
+        },
+        {
+          "name": "Filler2",
+          "start": 39,
+          "end": 240,
+          "kind": "X"
+        }
+      ]
+    },
+    "file_trailer": {
+      "fields": [
+        {
+          "name": "BankCode",
+          "start": 1,
+          "end": 3,
+          "kind": "9",
+          "const": "999"
+        },
+        {
+          "name": "ServiceBatchNumber",
+          "start": 4,
+          "end": 7,
+          "kind": "9",
+          "const": "9999"
+        },
+        {
+          "name": "RecordType",
+          "start": 8,
+          "end": 8,
+          "kind": "9",
+          "const": "9"
+        },
+        {
+          "name": "Filler1",
+          "start": 9,
+          "end": 17,
+          "kind": "X"
+        },
+        {
+          "name": "BatchCount",
+          "start": 18,
+          "end": 23,
+          "kind": "9",
+          "key": "sys.batch_count"
+        },
+        {
+          "name": "FileRecordCount",
+          "start": 24,
+          "end": 29,
+          "kind": "9",
+          "key": "sys.file_record_count"
+        },
+        {
+          "name": "Filler2",
+          "start": 30,
+          "end": 240,
+          "kind": "X"
+        }
+      ]
+    }
+  }
+}
