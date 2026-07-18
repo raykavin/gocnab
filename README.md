@@ -16,7 +16,7 @@ O SDK separa três camadas independentes:
 2. **Descritores de layout** (`cnab/layout` e pacotes `layouts/<nome>`): descrevem, campo a campo, o layout de um banco/produto. O layout de referência `febraban240` (padrão FEBRABAN puro, sem personalização de banco) já vem embutido.
 3. **API pública de domínio** (`cnab`): o que o desenvolvedor realmente usa. Nenhuma posição de campo aparece aqui, apenas conceitos como empresa, conta, favorecido e tipos de pagamento (crédito em conta, TED, PIX, boleto, tributos, cancelamento).
 
-Veja `./docs/ARQUITETURA.md` para o detalhamento das três camadas e `./docs/NOVO-BANCO.md` para o passo a passo de como derivar o layout de um banco real a partir de `febraban240`.
+Veja [ARQUITETURA.md](ARQUITETURA.md) para o detalhamento das três camadas e [NOVO-BANCO.md](NOVO-BANCO.md) para o passo a passo de como derivar o layout de um banco real a partir de `febraban240`. A referência completa de tipos, funções e constantes exportados está em [API.md](API.md).
 
 ## Instalação
 
@@ -111,9 +111,9 @@ go run ./examples/pix_key
 
 ## Documentação
 
-- `docs/ARQUITETURA.md`: as três camadas do SDK e as decisões de design.
-- `docs/API.md`: referência completa da API pública.
-- `docs/NOVO-BANCO.md`: passo a passo para implementar o descritor de um banco real a partir do manual CNAB dele.
+- [ARQUITETURA.md](ARQUITETURA.md): as três camadas do SDK e as decisões de design.
+- [API.md](API.md): referência completa da API pública.
+- [NOVO-BANCO.md](NOVO-BANCO.md): passo a passo para implementar o descritor de um banco real a partir do manual CNAB dele.
 
 ## Testes
 
@@ -125,17 +125,17 @@ O pacote `internal/engine` (o motor genérico) mantém cobertura de testes acima
 
 ---
 
-## Contributing
+## Contribuindo
 
-Contributions to gocnab are welcome! Here are some ways you can help:
+Contribuições para o gocnab são bem-vindas! Veja algumas formas de ajudar:
 
-- **Report bugs and suggest features** by opening issues on GitHub
-- **Submit pull requests** with bug fixes or new features
-- **Improve documentation** to help other users and developers
+- **Reporte bugs e sugira funcionalidades** abrindo issues no GitHub
+- **Envie pull requests** com correções de bugs ou novas funcionalidades
+- **Melhore a documentação** para ajudar outros usuários e desenvolvedores
 
 ---
 
-## License
+## Licença
 
-gocnab is distributed under the **MIT License**.
-For complete license terms and conditions, see the [LICENSE](LICENSE) file in the repository.
+gocnab é distribuído sob a **Licença MIT**.
+Para os termos e condições completos da licença, veja o arquivo [LICENSE](LICENSE) no repositório.
