@@ -1,4 +1,4 @@
-# gocnab
+# GoCNAB
 
 SDK em Go para geração de arquivos de remessa no padrão **CNAB 240 FEBRABAN**, com arquitetura multi-banco.
 
