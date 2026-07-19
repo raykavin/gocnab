@@ -88,19 +88,19 @@ Valores monetários são sempre inteiros em centavos (`cnab.Cents`), nunca `floa
 
 ## Exemplos completos
 
-A pasta `./examples` tem um programa `go run`-ável para cada cenário coberto pelo SDK:
+A pasta `./examples` tem exemplos para cada cenário coberto pelo SDK:
 
-| Pasta | Cenário |
-|---|---|
-| `examples/credit_account` | Crédito em conta corrente |
-| `examples/ted` | TED |
-| `examples/pix_key` | PIX por chave |
-| `examples/pix_bank_data` | PIX por dados bancários |
-| `examples/boleto` | Pagamento de boleto |
-| `examples/barcode_tax` | Tributo/conta com código de barras |
-| `examples/darf` | DARF |
-| `examples/gps` | GPS |
-| `examples/cancel_payment` | Cancelamento de pagamento |
+| Pasta                         | Cenário                                                                                      |
+| ----------------------------- | -------------------------------------------------------------------------------------------- |
+| `examples/credit_account`     | Crédito em conta corrente                                                                    |
+| `examples/ted`                | TED                                                                                          |
+| `examples/pix_key`            | PIX por chave                                                                                |
+| `examples/pix_bank_data`      | PIX por dados bancários                                                                      |
+| `examples/boleto`             | Pagamento de boleto                                                                          |
+| `examples/barcode_tax`        | Tributo/conta com código de barras                                                           |
+| `examples/darf`               | DARF                                                                                         |
+| `examples/gps`                | GPS                                                                                          |
+| `examples/cancel_payment`     | Cancelamento de pagamento                                                                    |
 | `examples/custom_layout_json` | Layout de banco carregado de um arquivo JSON (`layout.NewFromJSON`), em vez de escrito em Go |
 
 Cada exemplo roda isoladamente, por exemplo:
