@@ -12,6 +12,11 @@ type Account struct {
 	Number string
 	// CheckDigit is the account check digit.
 	CheckDigit string
+	// BranchCheckDigit is the check digit of Branch itself, distinct from
+	// CheckDigit (the account's own check digit). Optional: some bank
+	// manuals require it, others leave it blank; a Layout that doesn't
+	// bind it simply never reads this field.
+	BranchCheckDigit string
 }
 
 func (a Account) validate() error {

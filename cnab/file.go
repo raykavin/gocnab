@@ -164,6 +164,8 @@ func (f *File) headerValues() layout.Values {
 		layout.KeyBranch:                  f.config.Account.Branch,
 		layout.KeyAccountNumber:           f.config.Account.Number,
 		layout.KeyAccountCheckDigit:       f.config.Account.CheckDigit,
+		layout.KeyBranchCheckDigit:        f.config.Account.BranchCheckDigit,
+		layout.KeyFileDensity:             f.config.FileDensity,
 	}
 }
 

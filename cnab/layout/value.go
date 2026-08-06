@@ -72,6 +72,16 @@ const (
 	KeyAccountNumber Key = "account_number"
 	// KeyAccountCheckDigit is the bank account check digit.
 	KeyAccountCheckDigit Key = "account_check_digit"
+	// KeyBranchCheckDigit is the check digit of the branch ("agência")
+	// maintaining the payer's account, distinct from KeyAccountCheckDigit
+	// (the account's own check digit). Some bank manuals require it on the
+	// file/batch header; unset, it renders blank like any other unbound
+	// alphanumeric field.
+	KeyBranchCheckDigit Key = "branch_check_digit"
+	// KeyFileDensity is the recording density ("densidade de gravação")
+	// some bank manuals require on the file header, e.g. "01600" or
+	// "06250".
+	KeyFileDensity Key = "file_density"
 
 	// KeyBatchProductCode is the "tipo de serviço" code of a batch (e.g.
 	// supplier payments, payroll).
@@ -199,7 +209,7 @@ var AllKeys = []Key{
 
 	KeyFileSequenceNumber, KeyFileGenerationDate, KeyFileGenerationTime,
 	KeyCompanyRegistrationKind, KeyCompanyRegistration, KeyCompanyName, KeyAgreement,
-	KeyBranch, KeyAccountNumber, KeyAccountCheckDigit,
+	KeyBranch, KeyAccountNumber, KeyAccountCheckDigit, KeyBranchCheckDigit, KeyFileDensity,
 	KeyBatchProductCode, KeyBatchServiceCode,
 	KeyMovementType, KeyInstructionCode, KeyClearingCode,
 	KeyBeneficiaryBankCode, KeyBeneficiaryBranch, KeyBeneficiaryAccount, KeyBeneficiaryCheckDigit,
