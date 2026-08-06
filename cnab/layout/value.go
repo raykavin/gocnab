@@ -72,6 +72,16 @@ const (
 	KeyAccountNumber Key = "account_number"
 	// KeyAccountCheckDigit is the bank account check digit.
 	KeyAccountCheckDigit Key = "account_check_digit"
+	// KeyBranchCheckDigit is the check digit of the branch ("agência")
+	// maintaining the payer's account, distinct from KeyAccountCheckDigit
+	// (the account's own check digit). Some bank manuals require it on the
+	// file/batch header; unset, it renders blank like any other unbound
+	// alphanumeric field.
+	KeyBranchCheckDigit Key = "branch_check_digit"
+	// KeyFileDensity is the recording density ("densidade de gravação")
+	// some bank manuals require on the file header, e.g. "01600" or
+	// "06250".
+	KeyFileDensity Key = "file_density"
 
 	// KeyBatchProductCode is the "tipo de serviço" code of a batch (e.g.
 	// supplier payments, payroll).
@@ -187,6 +197,27 @@ const (
 	// KeyInterestAmount is the interest ("juros") portion of a tax
 	// payment.
 	KeyInterestAmount Key = "interest_amount"
+
+	// KeySettlementDate is the date a bank actually settled a payment
+	// ("data real da efetivação do pagamento"), reported on Segmento A of a
+	// CNAB 240 return file. On a remittance (as opposed to a return) this
+	// field is always zero, which is exactly what rendering it produces
+	// when nothing sets this key remittance-building code never needs to
+	// set it.
+	KeySettlementDate Key = "settlement_date"
+	// KeySettlementAmount is the amount a bank actually settled
+	// ("valor real da efetivação do pagamento"), reported on Segmento A of
+	// a CNAB 240 return file. Like KeySettlementDate, it renders as zero on
+	// a remittance when unset.
+	KeySettlementAmount Key = "settlement_amount"
+	// KeyOccurrenceCodes is the raw return/rejection occurrence codes field
+	// on Segmento A of a CNAB 240 return file ("códigos/motivos de
+	// ocorrências para retorno"): up to five 2 digit codes, packed left to
+	// right, "00" or blank meaning no occurrence. It renders as blank on a
+	// remittance when unset. See cnab.ParseReturn, which splits and
+	// interprets this field; a Layout only needs to bind the column range,
+	// never to know what a given code means.
+	KeyOccurrenceCodes Key = "occurrence_codes"
 )
 
 // AllKeys lists every Key constant defined in this file, structural and
@@ -199,7 +230,7 @@ var AllKeys = []Key{
 
 	KeyFileSequenceNumber, KeyFileGenerationDate, KeyFileGenerationTime,
 	KeyCompanyRegistrationKind, KeyCompanyRegistration, KeyCompanyName, KeyAgreement,
-	KeyBranch, KeyAccountNumber, KeyAccountCheckDigit,
+	KeyBranch, KeyAccountNumber, KeyAccountCheckDigit, KeyBranchCheckDigit, KeyFileDensity,
 	KeyBatchProductCode, KeyBatchServiceCode,
 	KeyMovementType, KeyInstructionCode, KeyClearingCode,
 	KeyBeneficiaryBankCode, KeyBeneficiaryBranch, KeyBeneficiaryAccount, KeyBeneficiaryCheckDigit,
@@ -212,6 +243,7 @@ var AllKeys = []Key{
 	KeyAssignorDocumentKind, KeyAssignorDocument, KeyAssignorName,
 	KeyTaxCode, KeyTaxpayerDocumentKind, KeyTaxpayerIdType, KeyTaxpayerDocument, KeyTaxpayerName,
 	KeyReferenceNumber, KeyPeriod, KeyPrincipalAmount, KeyFineAmount, KeyInterestAmount,
+	KeySettlementDate, KeySettlementAmount, KeyOccurrenceCodes,
 }
 
 // IsKnownKey reports whether k is one of the values in AllKeys.

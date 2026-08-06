@@ -46,6 +46,45 @@ func (e *LimitError) Error() string {
 	return fmt.Sprintf("cnab: limit %q exceeded: got %d, max %d", e.Limit, e.Got, e.Max)
 }
 
+// FieldParseError reports a problem decoding a specific field while
+// parsing a line, the read-side counterpart of FieldRenderError.
+type FieldParseError struct {
+	Field  string
+	Reason string
+}
+
+func (e *FieldParseError) Error() string {
+	return fmt.Sprintf("field %q: %s", e.Field, e.Reason)
+}
+
+// RecordParseError reports that a line could not be parsed as a given
+// record kind at all currently only because it is not exactly 240
+// characters long.
+type RecordParseError struct {
+	Record string
+	Reason string
+}
+
+func (e *RecordParseError) Error() string {
+	return fmt.Sprintf("cnab: parse record %q: %s", e.Record, e.Reason)
+}
+
+// RecordMismatchError reports that a const field's column content, while
+// parsing a line, did not equal the literal value the layout expects
+// there. This means either the line is corrupt or it does not actually
+// belong to the record kind it was parsed as (e.g. a caller misclassified
+// which RecordKey a line plays before calling Engine.ParseRecord).
+type RecordMismatchError struct {
+	Record   string
+	Field    string
+	Expected string
+	Got      string
+}
+
+func (e *RecordMismatchError) Error() string {
+	return fmt.Sprintf("cnab: parse record %q: field %q: expected %q, got %q", e.Record, e.Field, e.Expected, e.Got)
+}
+
 // BatchError wraps an error that occurred while rendering a specific
 // batch and record, adding context the lower level error cannot know
 // about on its own.

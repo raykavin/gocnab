@@ -4,7 +4,7 @@ import "testing"
 
 func validPayee() Payee {
 	cnpj, _ := NewCNPJ("11222333000181")
-	return Payee{Name: "FORNECEDOR X", Registration: cnpj}
+	return Payee{Name: "COLABORADOR X", Registration: cnpj}
 }
 
 func TestPayeeValidate(t *testing.T) {
@@ -19,7 +19,7 @@ func TestPayeeValidateMissingFields(t *testing.T) {
 		payee Payee
 	}{
 		{"missing name", Payee{Registration: validPayee().Registration}},
-		{"missing registration", Payee{Name: "FORNECEDOR X"}},
+		{"missing registration", Payee{Name: "COLABORADOR X"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

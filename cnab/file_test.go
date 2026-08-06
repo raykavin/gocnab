@@ -1,6 +1,7 @@
 package cnab
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -177,6 +178,49 @@ func TestGenerateRejectsPaymentThatBecamePastDue(t *testing.T) {
 
 	if _, err := f.Generate(); err == nil {
 		t.Fatal("Generate() error = nil, want an error for a payment date that became past due")
+	}
+}
+
+// TestGenerateTranslatesFieldRenderError confirms Generate never lets an
+// *engine.FieldRenderError (unnameable outside this module) escape
+// unwrapped: AddPayment has no way to check a beneficiary account number
+// against the active Layout's field width (Account.validate only checks
+// the three fields are non-empty), so an overlong one only fails once the
+// engine actually tries to render it, inside Generate.
+func TestGenerateTranslatesFieldRenderError(t *testing.T) {
+	f, err := NewRemittance(validConfig())
+	if err != nil {
+		t.Fatalf("NewRemittance() error = %v", err)
+	}
+	batch, err := f.NewBatch(SupplierPayment, CreditInAccount)
+	if err != nil {
+		t.Fatalf("NewBatch() error = %v", err)
+	}
+	if err := batch.AddPayment(CreditAccount{
+		Payee:   validPayee(),
+		Account: Account{Branch: "0116", Number: "1234567890123", CheckDigit: "6"}, // 13 digits, field is 12
+		Amount:  1000,
+		Date:    time.Now().AddDate(0, 0, 1),
+	}); err != nil {
+		t.Fatalf("AddPayment() error = %v, want nil (field width is not checked until Generate)", err)
+	}
+
+	_, err = f.Generate()
+	if err == nil {
+		t.Fatal("Generate() error = nil, want an error for an overlong account number")
+	}
+	var fieldErr *FieldError
+	if !errors.As(err, &fieldErr) {
+		t.Fatalf("error = %v (%T), want *FieldError", err, err)
+	}
+	if fieldErr.Field != "FavoredAccountNumber" {
+		t.Errorf("Field = %q, want %q", fieldErr.Field, "FavoredAccountNumber")
+	}
+	if fieldErr.Record != "segment_a" {
+		t.Errorf("Record = %q, want %q", fieldErr.Record, "segment_a")
+	}
+	if fieldErr.Batch != 1 {
+		t.Errorf("Batch = %d, want 1", fieldErr.Batch)
 	}
 }
 

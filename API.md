@@ -13,6 +13,7 @@ Convenções usadas neste documento: valores monetários são sempre `cnab.Cents
 - [Produtos e serviços de lote](#produtos-e-serviços-de-lote)
 - [Tipos de pagamento](#tipos-de-pagamento)
 - [PIX](#pix)
+- [Processando retorno](#processando-retorno)
 - [Registro de layouts](#registro-de-layouts)
 - [Erros](#erros)
 - [Pacote `cnab/layout`](#pacote-cnablayout)
@@ -82,7 +83,7 @@ Identifica o favorecido de um pagamento: quem recebe. Validação: `Name` não p
 
 ```go
 registration, err := cnab.NewCNPJ("11222333000181")
-payee := cnab.Payee{Name: "FORNECEDOR X", Registration: registration}
+payee := cnab.Payee{Name: "COLABORADOR X", Registration: registration}
 ```
 
 ---
@@ -474,6 +475,47 @@ Transferência PIX endereçada pelos dados bancários do favorecido em vez de um
 
 ---
 
+## Processando retorno
+
+### `func ParseReturn`
+
+```go
+func ParseReturn(layoutName string, content []byte) (*ReturnFile, error)
+```
+
+Decodifica um arquivo de retorno CNAB 240 usando o layout registrado sob `layoutName` normalmente o mesmo layout com que a remessa correspondente foi gerada. Aceita `content` terminado em CRLF ou apenas LF, com ou sem linha vazia final.
+
+Decodifica somente o Segmento A de cada movimento; todo outro registro (headers/trailers de arquivo e lote, Segmentos B/BPix e qualquer outro segmento de detalhe) é ignorado. Veja "Processando retorno" em `ARQUITETURA.md` para o motivo de o Segmento A ser suficiente.
+
+**Erros:** `*ValidationError` se `layoutName` não estiver registrado ou se o layout em si for inválido (mesmas condições de `NewRemittance`); `*ReturnParseError` se uma linha não tiver exatamente 240 caracteres, tiver um marcador de tipo de registro desconhecido, ou (classificada como Segmento A) tiver um campo constante cujo conteúdo não bate com o que o layout espera ali.
+
+### `type ReturnFile`
+
+```go
+type ReturnFile struct {
+    Movements []ReturnMovement
+}
+```
+
+Resultado estruturado de `ParseReturn`: um `ReturnMovement` por Segmento A encontrado, na ordem em que aparecem no arquivo.
+
+### `type ReturnMovement`
+
+```go
+type ReturnMovement struct {
+    YourNumber       string
+    Amount           Cents
+    SettlementDate   time.Time
+    SettlementAmount Cents
+    OccurrenceCodes  []string
+}
+func (m ReturnMovement) Accepted() bool
+```
+
+O resultado de um pagamento, conforme reportado pelo banco. `YourNumber` é o "seu número" ecoado sem alteração desde a remessa (o mesmo valor que `AddPayment` recebeu no campo `YourNumber` do `Payment`) é o que permite casar um `ReturnMovement` de volta com um pagamento específico do chamador. `Amount` é o valor instruído na remessa; `SettlementDate`/`SettlementAmount` são a data/valor reais de liquidação informados pelo banco, zerados quando o pagamento não liquidou. `OccurrenceCodes` lista os códigos de ocorrência/rejeição não nulos (até cinco, cada um com 2 dígitos); a tabela que traduz um código para o que ele significa é específica de cada banco confirme com o manual dele, do mesmo jeito que já vale para `TED.Purpose`. `Accepted()` retorna `true` quando `OccurrenceCodes` está vazio.
+
+---
+
 ## Registro de layouts
 
 ### `func RegisterLayout`
@@ -524,7 +566,21 @@ type FieldError struct {
 }
 ```
 
-Um campo específico, de um registro específico, dentro de um lote específico, não pôde ser renderizado.
+Um campo específico, de um registro específico, dentro de um lote específico, não pôde ser renderizado por exemplo, um `Account.Number` de favorecido mais longo do que a coluna do layout ativo permite (`AddPayment` não tem como validar isso sem conhecer os tamanhos de campo do layout; só o próprio `Generate` descobre). `NewRemittance` também traduz para este e outros tipos desta seção qualquer erro que o motor interno retorne ao validar o `Layout` informado.
+
+### `type ReturnParseError`
+
+```go
+type ReturnParseError struct {
+    Line     int
+    Field    string
+    Expected string
+    Got      string
+    Reason   string
+}
+```
+
+Retornado por `ParseReturn`. `Field` vazio identifica um problema que não é de um campo específico (hoje, só uma linha com tamanho diferente de 240 caracteres ou um marcador de tipo de registro desconhecido `Reason` descreve qual); `Field` preenchido identifica um campo constante cujo conteúdo, na `Line` indicada (1-based), não bateu com `Expected` (o valor exigido pelo layout, já com o padding de renderização) `Got` é o que a linha realmente tinha ali. Como `FieldError`, este tipo é sempre o que `ParseReturn` retorna: nenhum erro do motor interno escapa sem tradução.
 
 ### `type LimitExceededError`
 
@@ -697,7 +753,7 @@ type Values map[Key]any
 
 **Estruturais** (nunca definidas fora de `internal/engine`): `KeyBatchNumber`, `KeySequence`, `KeyBatchRecordCount`, `KeyBatchAmount`, `KeyBatchCount`, `KeyFileRecordCount`.
 
-**Semânticas** (definidas pela camada `cnab`, lidas pelos `FieldSpec.Key` de um layout): `KeyFileSequenceNumber`, `KeyFileGenerationDate`, `KeyFileGenerationTime`, `KeyCompanyRegistrationKind`, `KeyCompanyRegistration`, `KeyCompanyName`, `KeyAgreement`, `KeyBranch`, `KeyAccountNumber`, `KeyAccountCheckDigit`, `KeyBatchProductCode`, `KeyBatchServiceCode`, `KeyMovementType`, `KeyInstructionCode`, `KeyClearingCode`, `KeyBeneficiaryBankCode`, `KeyBeneficiaryBranch`, `KeyBeneficiaryAccount`, `KeyBeneficiaryCheckDigit`, `KeyPayeeName`, `KeyPayeeDocumentKind`, `KeyPayeeDocument`, `KeyYourNumber`, `KeyAmount`, `KeyPaymentDate`, `KeyPurposeCode`, `KeyPixKeyType`, `KeyPixKeyValue`, `KeyPayeeAddressStreet`/`Number`/`District`/`City`/`State`/`ZipCode`, `KeyBarcode`, `KeyDueDate`, `KeyDocumentAmount`, `KeyDiscountAmount`, `KeyAdditionAmount`, `KeyPayerDocumentKind`, `KeyPayerDocument`, `KeyPayerName`, `KeyAssignorDocumentKind`, `KeyAssignorDocument`, `KeyAssignorName`, `KeyTaxCode`, `KeyTaxpayerDocumentKind`, `KeyTaxpayerIdType`, `KeyTaxpayerDocument`, `KeyTaxpayerName`, `KeyReferenceNumber`, `KeyPeriod`, `KeyPrincipalAmount`, `KeyFineAmount`, `KeyInterestAmount`.
+**Semânticas** (definidas pela camada `cnab`, lidas pelos `FieldSpec.Key` de um layout): `KeyFileSequenceNumber`, `KeyFileGenerationDate`, `KeyFileGenerationTime`, `KeyCompanyRegistrationKind`, `KeyCompanyRegistration`, `KeyCompanyName`, `KeyAgreement`, `KeyBranch`, `KeyAccountNumber`, `KeyAccountCheckDigit`, `KeyBatchProductCode`, `KeyBatchServiceCode`, `KeyMovementType`, `KeyInstructionCode`, `KeyClearingCode`, `KeyBeneficiaryBankCode`, `KeyBeneficiaryBranch`, `KeyBeneficiaryAccount`, `KeyBeneficiaryCheckDigit`, `KeyPayeeName`, `KeyPayeeDocumentKind`, `KeyPayeeDocument`, `KeyYourNumber`, `KeyAmount`, `KeyPaymentDate`, `KeyPurposeCode`, `KeyPixKeyType`, `KeyPixKeyValue`, `KeyPayeeAddressStreet`/`Number`/`District`/`City`/`State`/`ZipCode`, `KeyBarcode`, `KeyDueDate`, `KeyDocumentAmount`, `KeyDiscountAmount`, `KeyAdditionAmount`, `KeyPayerDocumentKind`, `KeyPayerDocument`, `KeyPayerName`, `KeyAssignorDocumentKind`, `KeyAssignorDocument`, `KeyAssignorName`, `KeyTaxCode`, `KeyTaxpayerDocumentKind`, `KeyTaxpayerIdType`, `KeyTaxpayerDocument`, `KeyTaxpayerName`, `KeyReferenceNumber`, `KeyPeriod`, `KeyPrincipalAmount`, `KeyFineAmount`, `KeyInterestAmount`, `KeySettlementDate`, `KeySettlementAmount`, `KeyOccurrenceCodes` (estas três últimas só têm conteúdo real num arquivo de retorno ver "Processando retorno" e renderizam como zero/branco numa remessa quando não definidas).
 
 ```go
 var AllKeys []Key          // toda constante Key acima, estrutural e semântica

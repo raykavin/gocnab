@@ -50,7 +50,7 @@ func NewRemittance(cfg Config) (*File, error) {
 
 	eng, err := engine.New(l)
 	if err != nil {
-		return nil, err
+		return nil, translateEngineError(err)
 	}
 
 	return &File{config: cfg, engine: eng, layout: l}, nil
@@ -105,7 +105,12 @@ func (f *File) FileName() (string, error) {
 // through normal use and exists as a defensive guard against a defective
 // Layout. Every other structural rule (FEBRABAN limits, sequencing,
 // per-batch trailer totals) is enforced by construction inside the
-// engine.
+// engine. Any error the engine itself returns (typically a *FieldError,
+// when a value does not fit the column width a Layout gives it e.g. an
+// Account.Number longer than the active Layout allows, which AddPayment
+// has no way to check without knowing the Layout's field sizes) is
+// translated to one of this package's own error types before Generate
+// returns it.
 func (f *File) Generate() ([]byte, error) {
 	if len(f.batches) == 0 {
 		return nil, &ValidationError{Context: "Generate", Reason: "file must have at least one batch"}
@@ -136,7 +141,7 @@ func (f *File) Generate() ([]byte, error) {
 
 	out, err := f.engine.Build(in)
 	if err != nil {
-		return nil, err
+		return nil, translateEngineError(err)
 	}
 
 	actualRecords := strings.Count(string(out), "\r\n")
@@ -164,6 +169,8 @@ func (f *File) headerValues() layout.Values {
 		layout.KeyBranch:                  f.config.Account.Branch,
 		layout.KeyAccountNumber:           f.config.Account.Number,
 		layout.KeyAccountCheckDigit:       f.config.Account.CheckDigit,
+		layout.KeyBranchCheckDigit:        f.config.Account.BranchCheckDigit,
+		layout.KeyFileDensity:             f.config.FileDensity,
 	}
 }
 

@@ -1,6 +1,6 @@
 # GoCNAB
 
-SDK em Go para geração de arquivos de remessa no padrão **CNAB 240 FEBRABAN**, com arquitetura multi-banco.
+SDK em Go para geração de arquivos de remessa e leitura de arquivos de retorno no padrão **CNAB 240 FEBRABAN**, com arquitetura multi-banco.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/raykavin/gocnab.svg)](https://pkg.go.dev/github.com/raykavin/gocnab)
 [![Go Version](https://img.shields.io/badge/go-1.26+-00ADD8?logo=go&logoColor=white)](https://golang.org/dl/)
@@ -66,7 +66,7 @@ func main() {
 	payeeRegistration, _ := cnab.NewCNPJ("11444777000161")
 	err = batch.AddPayment(cnab.Pix{
 		Key:    cnab.EmailKey("fornecedor@exemplo.com"),
-		Payee:  cnab.Payee{Name: "FORNECEDOR X", Registration: payeeRegistration},
+		Payee:  cnab.Payee{Name: "COLABORADOR X", Registration: payeeRegistration},
 		Amount: cnab.Cents(25200), // R$ 252,00
 		Date:   time.Now().AddDate(0, 0, 1),
 	})
@@ -86,6 +86,30 @@ func main() {
 
 Valores monetários são sempre inteiros em centavos (`cnab.Cents`), nunca `float64`. Datas usam `time.Time`. Erros são tipados (`cnab.ValidationError`, `cnab.LimitExceededError`, `cnab.FieldError`, entre outros) e descritivos.
 
+## Processando retorno
+
+```go
+content, err := os.ReadFile("retorno_sicredi_20260105.ret")
+if err != nil {
+	log.Fatal(err)
+}
+
+result, err := cnab.ParseReturn("febraban240", content)
+if err != nil {
+	log.Fatal(err)
+}
+
+for _, m := range result.Movements {
+	if m.Accepted() {
+		fmt.Printf("%s: liquidado em %s\n", m.YourNumber, m.SettlementDate.Format("2006-01-02"))
+	} else {
+		fmt.Printf("%s: rejeitado, códigos %v\n", m.YourNumber, m.OccurrenceCodes)
+	}
+}
+```
+
+`ParseReturn` decodifica o Segmento A de cada movimento (o "seu número" enviado na remessa, valor, data e valor real de liquidação, códigos de ocorrência/rejeição) o suficiente para reconciliar um pagamento. Os demais segmentos (B, BPix, J, ...) são ignorados; veja "Processando retorno" em [ARQUITETURA.md](ARQUITETURA.md) para o motivo. A tabela de códigos de ocorrência é específica de cada banco confirme com o manual dele antes de interpretar um código.
+
 ## Exemplos completos
 
 A pasta `./examples` tem exemplos para cada cenário coberto pelo SDK:
@@ -102,6 +126,7 @@ A pasta `./examples` tem exemplos para cada cenário coberto pelo SDK:
 | `examples/gps`                | GPS                                                                                          |
 | `examples/cancel_payment`     | Cancelamento de pagamento                                                                    |
 | `examples/custom_layout_json` | Layout de banco carregado de um arquivo JSON (`layout.NewFromJSON`), em vez de escrito em Go |
+| `examples/parse_return`       | Leitura de um arquivo de retorno (`cnab.ParseReturn`)                                        |
 
 Cada exemplo roda isoladamente, por exemplo:
 

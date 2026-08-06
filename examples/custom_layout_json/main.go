@@ -68,7 +68,7 @@ func main() {
 		log.Fatalf("invalid payee CNPJ: %v", err)
 	}
 	err = batch.AddPayment(cnab.CreditAccount{
-		Payee:      cnab.Payee{Name: "FORNECEDOR X", Registration: payeeRegistration},
+		Payee:      cnab.Payee{Name: "COLABORADOR X", Registration: payeeRegistration},
 		Account:    cnab.Account{Branch: "0116", Number: "12345", CheckDigit: "0"},
 		Amount:     cnab.Cents(25200),
 		Date:       time.Now().AddDate(0, 0, 1),
