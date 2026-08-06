@@ -30,14 +30,22 @@ var segmentASpec = layout.RecordSpec{
 		numericConst("CurrencyQuantity", 105, 119, "0"),
 		numericDecimal("PaymentAmount", 120, 134, 2, layout.KeyAmount),
 		alphaFiller(135, 154),
-		numericConst("ActualPaymentDate", 155, 162, "0"),
-		numericConst("ActualPaymentAmount", 163, 177, "0"),
+		// ActualPaymentDate/ActualPaymentAmount/OccurrenceCodes are blank on
+		// a remittance and only meaningful on a bank's return file (see
+		// cnab.ParseReturn): "data e valor real da efetivação do pagamento"
+		// and "códigos/motivos de ocorrências para retorno". Binding them to
+		// a Key instead of a Const "0"/blank is backward compatible with
+		// every existing payment type: none of them sets these keys, and an
+		// unset numeric/alphanumeric Key renders exactly as "0"/blank
+		// already did (see engine.resolveValue).
+		numeric("ActualPaymentDate", 155, 162, layout.KeySettlementDate),
+		numericDecimal("ActualPaymentAmount", 163, 177, 2, layout.KeySettlementAmount),
 		alphaFiller(178, 217),
 		alphaFiller(218, 219),
 		alpha("TEDPurposeCode", 220, 224, layout.KeyPurposeCode),
 		alphaFiller(225, 226),
 		alphaFiller(227, 229),
 		alphaConst("NotifyFavored", 230, 230, "0"),
-		alphaFiller(231, 240),
+		alpha("OccurrenceCodes", 231, 240, layout.KeyOccurrenceCodes),
 	},
 }

@@ -13,4 +13,8 @@ type Config struct {
 	// a positive, incrementing number the caller controls across the
 	// files it sends to a given bank.
 	NSA int
+	// FileDensity is the recording density some bank manuals require on
+	// the file header (e.g. "01600" or "06250"). Optional: a Layout that
+	// doesn't bind layout.KeyFileDensity simply never reads this field.
+	FileDensity int
 }
