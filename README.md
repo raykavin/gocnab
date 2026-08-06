@@ -66,7 +66,7 @@ func main() {
 	payeeRegistration, _ := cnab.NewCNPJ("11444777000161")
 	err = batch.AddPayment(cnab.Pix{
 		Key:    cnab.EmailKey("fornecedor@exemplo.com"),
-		Payee:  cnab.Payee{Name: "FORNECEDOR X", Registration: payeeRegistration},
+		Payee:  cnab.Payee{Name: "COLABORADOR X", Registration: payeeRegistration},
 		Amount: cnab.Cents(25200), // R$ 252,00
 		Date:   time.Now().AddDate(0, 0, 1),
 	})

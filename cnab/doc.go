@@ -14,7 +14,7 @@
 //	batch, err := file.NewBatch(cnab.SupplierPayment, cnab.PixTransfer)
 //	err = batch.AddPayment(cnab.Pix{
 //		Key:    cnab.EmailKey("fornecedor@exemplo.com"),
-//		Payee:  cnab.Payee{Name: "FORNECEDOR X", Registration: cnpj},
+//		Payee:  cnab.Payee{Name: "COLABORADOR X", Registration: cnpj},
 //		Amount: cnab.Cents(25200),
 //		Date:   time.Now().AddDate(0, 0, 1),
 //	})

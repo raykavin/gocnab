@@ -82,7 +82,7 @@ Identifica o favorecido de um pagamento: quem recebe. Validação: `Name` não p
 
 ```go
 registration, err := cnab.NewCNPJ("11222333000181")
-payee := cnab.Payee{Name: "FORNECEDOR X", Registration: registration}
+payee := cnab.Payee{Name: "COLABORADOR X", Registration: registration}
 ```
 
 ---
