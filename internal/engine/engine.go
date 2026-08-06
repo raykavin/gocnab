@@ -67,6 +67,20 @@ func (e *Engine) LayoutVersion() string {
 	return e.layout.Version()
 }
 
+// ParseRecord decodes line a single 240 character record into a Values
+// map, the inverse of the rendering Build performs for the same RecordKey.
+// It returns a *SpecError if the layout does not define key, a
+// *RecordParseError if line is not exactly 240 characters, or a
+// *RecordMismatchError if a const field's content does not match what the
+// layout expects there.
+func (e *Engine) ParseRecord(key layout.RecordKey, line string) (layout.Values, error) {
+	rec, err := e.record(key)
+	if err != nil {
+		return nil, err
+	}
+	return rec.parse(line)
+}
+
 func (e *Engine) record(key layout.RecordKey) (*compiledRecord, error) {
 	rec, ok := e.compiled[key]
 	if !ok {
