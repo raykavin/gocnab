@@ -126,6 +126,15 @@ const (
 	KeyPaymentDate Key = "payment_date"
 	// KeyPurposeCode is the TED purpose ("finalidade") code.
 	KeyPurposeCode Key = "purpose_code"
+	// KeySupplementaryInfo is the free-use "Informação 2" field on
+	// Segmento A ("outras informações"). Its content is bank- and
+	// payment-kind-specific: some banks reuse it to carry a
+	// specially-formatted blob for a particular payment kind (e.g.
+	// PixBankData writes the beneficiary's document, bank ISPB and
+	// account kind here for Sicredi, per that bank's manual) rather than
+	// a free-text message. A Layout that does not bind it renders it
+	// blank, exactly as it did before this Key existed.
+	KeySupplementaryInfo Key = "supplementary_info"
 
 	// KeyPixKeyType identifies which PIX key variant KeyPixKeyValue holds
 	// ("phone", "email", "cpf", "cnpj" or "random").
@@ -235,6 +244,7 @@ var AllKeys = []Key{
 	KeyMovementType, KeyInstructionCode, KeyClearingCode,
 	KeyBeneficiaryBankCode, KeyBeneficiaryBranch, KeyBeneficiaryAccount, KeyBeneficiaryCheckDigit,
 	KeyPayeeName, KeyPayeeDocumentKind, KeyPayeeDocument, KeyYourNumber, KeyAmount, KeyPaymentDate, KeyPurposeCode,
+	KeySupplementaryInfo,
 	KeyPixKeyType, KeyPixKeyValue,
 	KeyPayeeAddressStreet, KeyPayeeAddressNumber, KeyPayeeAddressDistrict,
 	KeyPayeeAddressCity, KeyPayeeAddressState, KeyPayeeAddressZipCode,
