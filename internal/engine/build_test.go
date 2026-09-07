@@ -326,8 +326,6 @@ func TestEngineSupports(t *testing.T) {
 	}
 }
 
-// --- test helpers ---
-
 func splitLines(t *testing.T, out []byte, want int) []string {
 	t.Helper()
 	s := strings.TrimSuffix(string(out), "\r\n")
