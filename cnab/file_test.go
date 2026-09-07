@@ -159,6 +159,48 @@ func TestGenerateMultipleBatchesAndPayments(t *testing.T) {
 	}
 }
 
+// TestOtherBankBoletoServiceRendersDistinctCode confirms BoletoService and
+// OtherBankBoletoService render different "forma de lançamento" codes
+// (columns 12-13 of the batch header) even though the boleto payment
+// itself renders identically either way this is the whole reason the
+// two service values exist as separate constants: a bank that documents
+// them as distinct (e.g. Sicredi, which rejects the wrong one with
+// occurrence "CA") relies on this to route the payment correctly.
+func TestOtherBankBoletoServiceRendersDistinctCode(t *testing.T) {
+	now := time.Now()
+
+	batchHeaderServiceCode := func(service BatchService) string {
+		f, err := NewRemittance(validConfig())
+		if err != nil {
+			t.Fatalf("NewRemittance() error = %v", err)
+		}
+		batch, err := f.NewBatch(SupplierPayment, service)
+		if err != nil {
+			t.Fatalf("NewBatch() error = %v", err)
+		}
+		if err := batch.AddPayment(validBoleto(now)); err != nil {
+			t.Fatalf("AddPayment() error = %v", err)
+		}
+		content, err := f.Generate()
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		lines := strings.Split(strings.TrimSuffix(string(content), "\r\n"), "\r\n")
+		batchHeader := lines[1] // file header, then batch header
+		return batchHeader[11:13]
+	}
+
+	ownBank := batchHeaderServiceCode(BoletoService)
+	otherBank := batchHeaderServiceCode(OtherBankBoletoService)
+
+	if ownBank != "30" {
+		t.Errorf("BoletoService batch header code = %q, want \"30\"", ownBank)
+	}
+	if otherBank != "31" {
+		t.Errorf("OtherBankBoletoService batch header code = %q, want \"31\"", otherBank)
+	}
+}
+
 func TestGenerateRejectsPaymentThatBecamePastDue(t *testing.T) {
 	now := time.Now()
 	f, err := NewRemittance(validConfig())
