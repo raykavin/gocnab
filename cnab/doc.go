@@ -20,7 +20,5 @@
 //	})
 //	content, err := file.Generate()
 //
-// See ./docs in the module root (in Portuguese) for the full architecture
-// and API reference, and ./examples for a runnable program per payment
-// kind.
+// The examples directory contains runnable programs for each payment kind.
 package cnab
