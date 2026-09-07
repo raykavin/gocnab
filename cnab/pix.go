@@ -122,13 +122,47 @@ func (p Pix) toSegments(l Layout) ([]DetailSegment, error) {
 	}, nil
 }
 
+// PixBankAccountKind identifies the kind of account a PixBankData payment
+// credits, per the FEBRABAN convention some banks (e.g. Sicredi) require
+// alongside the beneficiary's bank data.
+type PixBankAccountKind string
+
+const (
+	// PixBankAccountChecking is a checking account ("conta corrente").
+	PixBankAccountChecking PixBankAccountKind = "01"
+	// PixBankAccountPayment is a payment account ("conta de pagamento").
+	PixBankAccountPayment PixBankAccountKind = "02"
+	// PixBankAccountSavings is a savings account ("conta poupança").
+	PixBankAccountSavings PixBankAccountKind = "03"
+)
+
+// pixKeyTypeCodeBankData is the FEBRABAN Segmento B code identifying a PIX
+// payment addressed by bank account data rather than by key ("chave 5" in
+// the Sicredi manual). It is not a PixKeyType/PixKey value: bank-data
+// addressing is a distinct payment kind (PixBankData), not one more key
+// variant of Pix, so it does not go through pixKeyFebrabanCode.
+const pixKeyTypeCodeBankData = "05"
+
 // PixBankData is a PIX transfer addressed by the beneficiary's bank
-// account data instead of a PIX key (FEBRABAN Segmentos A e B).
+// account data instead of a PIX key (FEBRABAN Segmentos A e B-Pix).
 type PixBankData struct {
 	// Payee is the beneficiary receiving the transfer.
 	Payee Payee
-	// BankCode is the beneficiary's bank code (COMPE or ISPB).
+	// BankCode is the beneficiary's bank COMPE code, written to Segmento
+	// A.
 	BankCode string
+	// ISPB is the beneficiary's bank ISPB code (8 digits). Some banks
+	// (e.g. Sicredi) require it alongside BankCode, packed together with
+	// the beneficiary's document and AccountKind into whichever field the
+	// active Layout binds KeySupplementaryInfo to on Segmento A or on
+	// Segmento B-Pix; left blank it renders as 8 zeros there, which a
+	// Layout that does not need it simply ignores.
+	ISPB string
+	// AccountKind identifies the kind of account Account refers to.
+	// Required by the same banks that require ISPB; left as the zero
+	// value it renders as "00" wherever a Layout expects one of the
+	// PixBankAccount* codes.
+	AccountKind PixBankAccountKind
 	// Account is the beneficiary's account at BankCode.
 	Account Account
 	// Amount is the payment amount.
@@ -167,14 +201,38 @@ func (p PixBankData) toSegments(l Layout) ([]DetailSegment, error) {
 		layout.KeyYourNumber:            p.YourNumber,
 		layout.KeyAmount:                int64(p.Amount),
 		layout.KeyPaymentDate:           formatDate(p.Date),
+		layout.KeySupplementaryInfo:     pixBankDataSupplementaryInfo(p),
 	}
 	b := layout.Values{
 		layout.KeyPayeeDocumentKind: documentKind(p.Payee.Registration),
 		layout.KeyPayeeDocument:     p.Payee.Registration.Digits(),
-		layout.KeyPixKeyType:        "bank_data",
+		layout.KeyPixKeyType:        pixKeyTypeCodeBankData,
+		// Offered on both segments because banks disagree about where the
+		// blob belongs: some want it in Segmento A's supplementary info,
+		// others in a dedicated range of Segmento B. The Layout binds
+		// whichever its manual specifies; the other simply renders blank.
+		layout.KeySupplementaryInfo: pixBankDataSupplementaryInfo(p),
 	}
 	return []DetailSegment{
 		{Key: layout.SegmentA, Values: a},
-		{Key: layout.SegmentB, Values: b},
+		{Key: layout.SegmentBPix, Values: b},
 	}, nil
+}
+
+// pixBankDataSupplementaryInfo packs the beneficiary's document, bank
+// ISPB and account kind into the fixed-width blob some banks (e.g.
+// Sicredi, per its manual's G031 note for PIX "chave 5") expect in
+// Segmento A's supplementary info field for a bank-data-addressed PIX
+// payment: a 14 digit CPF/CNPJ (zero-padded on the left), an 8 digit
+// ISPB and a 2 digit account kind code, 24 characters total. A Layout
+// that does not bind KeySupplementaryInfo, or a bank that does not need
+// this convention, simply never reads it.
+func pixBankDataSupplementaryInfo(p PixBankData) string {
+	document := zeroPadLeft(p.Payee.Registration.Digits(), 14)
+	ispb := zeroPadLeft(onlyDigits(p.ISPB), 8)
+	kind := string(p.AccountKind)
+	if kind == "" {
+		kind = "00"
+	}
+	return document + ispb + kind
 }

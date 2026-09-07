@@ -40,7 +40,7 @@ var segmentASpec = layout.RecordSpec{
 		// already did (see engine.resolveValue).
 		numeric("ActualPaymentDate", 155, 162, layout.KeySettlementDate),
 		numericDecimal("ActualPaymentAmount", 163, 177, 2, layout.KeySettlementAmount),
-		alphaFiller(178, 217),
+		alpha("SupplementaryInfo", 178, 217, layout.KeySupplementaryInfo),
 		alphaFiller(218, 219),
 		alpha("TEDPurposeCode", 220, 224, layout.KeyPurposeCode),
 		alphaFiller(225, 226),

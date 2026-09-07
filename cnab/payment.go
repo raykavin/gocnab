@@ -2,6 +2,7 @@ package cnab
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/raykavin/gocnab/cnab/layout"
@@ -58,6 +59,16 @@ func formatDate(t time.Time) string {
 // "competência" field.
 func formatMonthYear(t time.Time) string {
 	return t.Format("012006")
+}
+
+// zeroPadLeft left-pads s with "0" until it is width characters long,
+// truncating from the left instead if s is already longer than width
+// (matching how a fixed-width numeric CNAB field would be filled).
+func zeroPadLeft(s string, width int) string {
+	if len(s) >= width {
+		return s[len(s)-width:]
+	}
+	return strings.Repeat("0", width-len(s)) + s
 }
 
 func cloneSegmentValues(v layout.Values) layout.Values {
