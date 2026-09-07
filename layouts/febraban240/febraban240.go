@@ -1,25 +1,6 @@
-// Package febraban240 is the bundled reference layout implementing the
-// pure FEBRABAN CNAB 240 standard, with no bank-specific customization.
-// It exists to give the engine and the public cnab package something
-// concrete to render against, and to serve as the starting point for a
-// real bank layout: copy this package, keep the parts that match your
-// bank's manual, and override the rest (see docs/NOVO-BANCO.md at the
-// module root).
-//
-// The layout self-registers as "febraban240" in an init function, and
-// the cnab package imports this package directly, so it is available to
-// every program that imports cnab with no extra import required.
-//
-// Two places in the real FEBRABAN standard reuse the same segment letter
-// for physically different content depending on the payment kind
-// (Segmento B differs between a plain credit/TED payment and a PIX
-// transfer; Segmento N differs between DARF Normal, DARF Simples and
-// GPS). This package models each of those as its own layout.RecordKey
-// (SegmentB/SegmentBPix, SegmentN/SegmentNSimple/SegmentNSocial) instead
-// of a single physically polymorphic shape, so every RecordSpec here
-// stays a single, straightforward field list. Field positions come from
-// the official FEBRABAN manuals; see docs/ARQUITETURA.md for how this
-// package is organized.
+// Package febraban240 implements the standard FEBRABAN CNAB 240 layout.
+// It self-registers as "febraban240" and models payment-specific segment
+// variants as separate record keys.
 package febraban240
 
 import "github.com/raykavin/gocnab/cnab/layout"

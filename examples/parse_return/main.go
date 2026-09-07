@@ -1,13 +1,4 @@
-// Example: parsing a CNAB 240 return file with cnab.ParseReturn.
-//
-// Banks send return files, not this SDK, so there is nothing to generate
-// here the way every other example does. Instead, this example builds a
-// remittance exactly as examples/pix_key does, then patches the three
-// column ranges of its Segmento A that a bank fills in on the way back
-// (see docs/ARQUITETURA.md, "Processando retorno") to simulate what that
-// remittance's return might look like: one settled payment, one rejected.
-// A real integration skips straight to ParseReturn, on bytes read from the
-// file a bank actually sent.
+// Example: parsing a simulated CNAB 240 return file with cnab.ParseReturn.
 //
 // Run with: go run ./examples/parse_return
 package main
