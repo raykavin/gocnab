@@ -14,6 +14,12 @@ type CreditAccount struct {
 	// Account is the beneficiary's account at the same bank the
 	// remittance file is sent to.
 	Account Account
+	// BankCode is the beneficiary's bank COMPE code, written to Segmento
+	// A's beneficiary bank field. For a same-bank credit this is the bank
+	// the file is sent to; left empty it renders as zeros there, which
+	// some banks reject ("código do banco favorecido inválido") even
+	// though the credit never leaves them.
+	BankCode string
 	// Amount is the payment amount.
 	Amount Cents
 	// Date is the date the payment should be settled.
@@ -40,6 +46,7 @@ func (c CreditAccount) toSegments(l Layout) ([]DetailSegment, error) {
 	a := layout.Values{
 		layout.KeyMovementType:          "0",
 		layout.KeyClearingCode:          "000", // crédito em conta, mesmo banco
+		layout.KeyBeneficiaryBankCode:   c.BankCode,
 		layout.KeyBeneficiaryBranch:     c.Account.Branch,
 		layout.KeyBeneficiaryAccount:    c.Account.Number,
 		layout.KeyBeneficiaryCheckDigit: c.Account.CheckDigit,
