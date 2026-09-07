@@ -93,6 +93,17 @@ func ParseReturn(layoutName string, content []byte) (*ReturnFile, error) {
 			Reason:  fmt.Sprintf("layout %q is not registered (available: %v)", layoutName, layout.Names()),
 		}
 	}
+	return ParseReturnWithLayout(l, content)
+}
+
+// ParseReturnWithLayout is ParseReturn against a Layout instance instead
+// of a registered name, for a caller whose layout is runtime data rather
+// than a process-wide constant (see Config.LayoutSpec). It returns a
+// *ValidationError when l is nil.
+func ParseReturnWithLayout(l Layout, content []byte) (*ReturnFile, error) {
+	if l == nil {
+		return nil, &ValidationError{Context: "ParseReturn", Reason: "Layout is required"}
+	}
 
 	eng, err := engine.New(l)
 	if err != nil {

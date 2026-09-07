@@ -4,7 +4,15 @@ package cnab
 // file.
 type Config struct {
 	// Layout is the name of a registered Layout, e.g. "febraban240".
+	// Ignored when LayoutSpec is set.
 	Layout string
+	// LayoutSpec is a Layout instance to use directly, bypassing the
+	// registry. Set it when the layout is not a process-wide constant but
+	// data the caller resolved at runtime (loaded from a database, say),
+	// which the name-based registry cannot express: Register is
+	// single-shot per name by design and holds its entries for the life of
+	// the process. When both are set, LayoutSpec wins.
+	LayoutSpec Layout
 	// Company is the payer sending the file.
 	Company Company
 	// Account is the bank account the file's payments are debited from.
