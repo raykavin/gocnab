@@ -137,8 +137,14 @@ func isDigitsOnly(s string) bool {
 // matching how banks handle overlong names in practice.
 func renderAlphanumeric(f layout.FieldSpec, raw any) (string, error) {
 	s := strings.ToUpper(alphaString(raw))
+	// The charset is validated on the upper case form, which is the one CNAB
+	// defines. Folding happens afterwards, so a Lowercase field still rejects
+	// exactly the characters every other field rejects.
 	if err := validateCharset(s); err != nil {
 		return "", &FieldRenderError{Field: f.Name, Reason: err.Error()}
+	}
+	if f.Lowercase {
+		s = strings.ToLower(s)
 	}
 	if len(s) > f.Size() {
 		s = s[:f.Size()]

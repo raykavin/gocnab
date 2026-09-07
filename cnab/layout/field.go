@@ -58,6 +58,12 @@ type FieldSpec struct {
 	// Const is a fixed literal value rendered regardless of the supplied
 	// Values. Leave empty when Key is set.
 	Const string
+	// Lowercase renders an alphanumeric field in lower case instead of the
+	// upper case CNAB otherwise normalizes to. Some manuals require it for
+	// a specific field a PIX e-mail key, for instance, which the receiving
+	// directory matches case-sensitively. Ignored for numeric and document
+	// fields, which carry no letters to fold.
+	Lowercase bool
 }
 
 // Size returns the number of columns the field occupies.
