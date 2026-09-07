@@ -28,6 +28,6 @@ var segmentJSpec = layout.RecordSpec{
 		alphaFiller(203, 222),
 		numericConst("CurrencyCode", 223, 224, "9"),
 		alphaFiller(225, 230),
-		alphaFiller(231, 240),
+		alpha("OccurrenceCodes", 231, 240, layout.KeyOccurrenceCodes),
 	},
 }
