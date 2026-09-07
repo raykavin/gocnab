@@ -70,6 +70,51 @@ func TestNewCNPJInvalid(t *testing.T) {
 	}
 }
 
+// TestNewCNPJAlphanumericValid covers the Receita Federal alphanumeric CNPJ
+// rule (in effect since July 2026): 12 alphanumeric "root+order" characters
+// followed by 2 numeric check digits.
+func TestNewCNPJAlphanumericValid(t *testing.T) {
+	cases := []string{"12ABC34501DE35", "12.ABC.345/01DE-35", "12abc34501de35"}
+	for _, raw := range cases {
+		cnpj, err := NewCNPJ(raw)
+		if err != nil {
+			t.Fatalf("NewCNPJ(%q) error = %v", raw, err)
+		}
+		if cnpj.Digits() != "12ABC34501DE35" {
+			t.Fatalf("Digits() = %q, want %q", cnpj.Digits(), "12ABC34501DE35")
+		}
+		if cnpj.Kind() != "CNPJ" {
+			t.Fatalf("Kind() = %q, want CNPJ", cnpj.Kind())
+		}
+	}
+}
+
+func TestNewCNPJAlphanumericInvalid(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{"wrong check digits", "12ABC34501DE00"},
+		{"letters in the check digit positions", "12ABC34501DEAB"},
+		{"all same character", "AAAAAAAAAAAAAA"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if _, err := NewCNPJ(c.raw); err == nil {
+				t.Fatalf("NewCNPJ(%q) error = nil, want an error", c.raw)
+			}
+		})
+	}
+}
+
+// TestNewCPFRejectsLetters confirms the alphanumeric rule never applies to
+// CPF: it stays purely numeric.
+func TestNewCPFRejectsLetters(t *testing.T) {
+	if _, err := NewCPF("1114447773A"); err == nil {
+		t.Fatal("NewCPF with a letter = nil error, want an error")
+	}
+}
+
 func TestDocumentKind(t *testing.T) {
 	cnpj, _ := NewCNPJ("11222333000181")
 	cpf, _ := NewCPF("11144477735")

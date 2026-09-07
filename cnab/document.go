@@ -16,25 +16,34 @@ type Document interface {
 	Kind() string
 }
 
-// CNPJ is a validated Brazilian company registration number.
+// CNPJ is a validated Brazilian company registration number. Since the
+// Receita Federal's alphanumeric CNPJ rule (in effect since July 2026),
+// this may hold 12 alphanumeric "root+order" characters followed by 2
+// numeric check digits, not just 14 decimal digits — see NewCNPJ.
 type CNPJ string
 
 // NewCNPJ validates raw (punctuation is stripped automatically) and
 // returns a CNPJ. It returns a *ValidationError when raw does not have 14
-// digits, is a sequence of 14 repeated digits, or fails the standard
-// modulo 11 check digit algorithm.
+// characters, is a sequence of 14 repeated characters, or fails the
+// modulo 11 check digit algorithm. raw may be the legacy all-numeric
+// format or the Receita Federal alphanumeric format (12 alphanumeric
+// "root+order" characters, uppercase letters or digits, followed by 2
+// numeric check digits); either way it is never reduced to a numeric
+// type, so a valid alphanumeric CNPJ is preserved exactly as issued.
 func NewCNPJ(raw string) (CNPJ, error) {
-	digits := onlyDigits(raw)
-	if len(digits) != 14 {
-		return "", &ValidationError{Context: "CNPJ", Reason: "must have 14 digits, got " + strconv.Itoa(len(digits))}
+	chars := alphanumericChars(raw)
+	if len(chars) != 14 {
+		return "", &ValidationError{Context: "CNPJ", Reason: "must have 14 characters, got " + strconv.Itoa(len(chars))}
 	}
-	if !validCNPJ(digits) {
-		return "", &ValidationError{Context: "CNPJ", Reason: "invalid check digits for \"" + digits + "\""}
+	if !validCNPJ(chars) {
+		return "", &ValidationError{Context: "CNPJ", Reason: "invalid check digits for \"" + chars + "\""}
 	}
-	return CNPJ(digits), nil
+	return CNPJ(chars), nil
 }
 
-// Digits returns the CNPJ as 14 decimal digits.
+// Digits returns the CNPJ as its 14 characters (digits, or — for an
+// alphanumeric CNPJ — 12 alphanumeric characters followed by 2 decimal
+// check digits).
 func (c CNPJ) Digits() string { return string(c) }
 
 // Kind returns "CNPJ".
@@ -84,7 +93,27 @@ func onlyDigits(s string) string {
 	return b.String()
 }
 
-func allSameDigit(s string) bool {
+// alphanumericChars strips separator/punctuation characters, uppercasing
+// letters, but — unlike onlyDigits — keeps A-Z intact: the normalization a
+// Receita Federal alphanumeric CNPJ needs, since stripping its letters
+// would silently corrupt it into a shorter, meaningless digit string.
+func alphanumericChars(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r)
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r - ('a' - 'A'))
+		}
+	}
+	return b.String()
+}
+
+func allSameChar(s string) bool {
 	for i := 1; i < len(s); i++ {
 		if s[i] != s[0] {
 			return false
@@ -93,10 +122,17 @@ func allSameDigit(s string) bool {
 	return true
 }
 
-func mod11CheckDigit(digits string, weights []int) int {
+// mod11CheckDigit computes a modulo-11 check digit. Each character's value
+// is its ASCII code minus 48 ('0'): for a decimal digit ('0'-'9', codes
+// 48-57) that is the digit's numeric value, unchanged from before; for an
+// alphanumeric CNPJ's uppercase letters (codes 65-90) it is 17-42, the
+// substitution Receita Federal defines for the alphanumeric CNPJ check
+// digit algorithm. CPF is always plain digits, so this is a no-op change
+// for it.
+func mod11CheckDigit(chars string, weights []int) int {
 	sum := 0
 	for i, w := range weights {
-		sum += int(digits[i]-'0') * w
+		sum += (int(chars[i]) - '0') * w
 	}
 	r := sum % 11
 	if r < 2 {
@@ -106,7 +142,7 @@ func mod11CheckDigit(digits string, weights []int) int {
 }
 
 func validCPF(d string) bool {
-	if len(d) != 11 || allSameDigit(d) {
+	if len(d) != 11 || allSameChar(d) {
 		return false
 	}
 	dv1 := mod11CheckDigit(d[:9], []int{10, 9, 8, 7, 6, 5, 4, 3, 2})
@@ -117,14 +153,32 @@ func validCPF(d string) bool {
 	return dv2 == int(d[10]-'0')
 }
 
-func validCNPJ(d string) bool {
-	if len(d) != 14 || allSameDigit(d) {
+// validCNPJ validates chars (14 characters: 12 alphanumeric "root+order"
+// characters — digits for a legacy CNPJ, possibly uppercase letters for a
+// Receita Federal alphanumeric CNPJ — followed by 2 numeric check digits)
+// against the modulo 11 algorithm.
+func validCNPJ(chars string) bool {
+	if len(chars) != 14 || allSameChar(chars) {
 		return false
 	}
-	dv1 := mod11CheckDigit(d[:12], []int{5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2})
-	if dv1 != int(d[12]-'0') {
+	// The 2 check digits themselves are always decimal, regardless of the
+	// root+order characters preceding them.
+	if !isDigitsOnly(chars[12:]) {
 		return false
 	}
-	dv2 := mod11CheckDigit(d[:13], []int{6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2})
-	return dv2 == int(d[13]-'0')
+	dv1 := mod11CheckDigit(chars[:12], []int{5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2})
+	if dv1 != int(chars[12]-'0') {
+		return false
+	}
+	dv2 := mod11CheckDigit(chars[:13], []int{6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2})
+	return dv2 == int(chars[13]-'0')
+}
+
+func isDigitsOnly(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
