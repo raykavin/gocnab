@@ -293,3 +293,38 @@ func TestUnknownFieldKind(t *testing.T) {
 		t.Fatal("renderField() error = nil, want an error for an unknown field kind")
 	}
 }
+
+// TestRenderAlphanumeric_Lowercase covers the Layout-declared lowercase rule:
+// the charset is still validated against CNAB's upper case alphabet, so the
+// only difference is the case of the rendered output.
+func TestRenderAlphanumeric_Lowercase(t *testing.T) {
+	spec := layout.FieldSpec{Name: "Key", Start: 1, End: 30, Kind: layout.KindAlphanumeric, Key: "k", Lowercase: true}
+
+	got, err := renderField(spec, layout.Values{"k": "Fornecedor@Exemplo.COM.br"})
+	if err != nil {
+		t.Fatalf("renderField() error = %v", err)
+	}
+	if want := "fornecedor@exemplo.com.br     "; got != want {
+		t.Errorf("renderField() = %q, want %q", got, want)
+	}
+}
+
+func TestRenderAlphanumeric_LowercaseStillRejectsForbiddenCharacters(t *testing.T) {
+	spec := layout.FieldSpec{Name: "Key", Start: 1, End: 10, Kind: layout.KindAlphanumeric, Key: "k", Lowercase: true}
+
+	if _, err := renderField(spec, layout.Values{"k": "a\tb"}); err == nil {
+		t.Error("expected a forbidden character to be rejected in a lowercase field too")
+	}
+}
+
+func TestRenderAlphanumeric_UppercaseByDefault(t *testing.T) {
+	spec := layout.FieldSpec{Name: "Name", Start: 1, End: 10, Kind: layout.KindAlphanumeric, Key: "k"}
+
+	got, err := renderField(spec, layout.Values{"k": "empresa"})
+	if err != nil {
+		t.Fatalf("renderField() error = %v", err)
+	}
+	if want := "EMPRESA   "; got != want {
+		t.Errorf("renderField() = %q, want %q", got, want)
+	}
+}
