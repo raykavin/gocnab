@@ -12,7 +12,7 @@ var fileHeaderSpec = layout.RecordSpec{
 		numericConst("RecordType", 8, 8, "0"),
 		alphaFiller(9, 17),
 		numeric("CompanyRegistrationKind", 18, 18, layout.KeyCompanyRegistrationKind),
-		numeric("CompanyRegistrationNumber", 19, 32, layout.KeyCompanyRegistration),
+		document("CompanyRegistrationNumber", 19, 32, layout.KeyCompanyRegistration),
 		alpha("AgreementCode", 33, 52, layout.KeyAgreement),
 		numeric("AccountBranch", 53, 57, layout.KeyBranch),
 		alphaFiller(58, 58),

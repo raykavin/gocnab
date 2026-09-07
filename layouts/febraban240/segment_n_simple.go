@@ -24,7 +24,7 @@ var segmentNSimpleSpec = layout.RecordSpec{
 		numeric("RevenueCode", 111, 114, layout.KeyTaxCode),
 		alphaFiller(115, 116),
 		numeric("TaxpayerIdType", 117, 118, layout.KeyTaxpayerIdType),
-		numeric("TaxpayerId", 119, 132, layout.KeyTaxpayerDocument),
+		document("TaxpayerId", 119, 132, layout.KeyTaxpayerDocument),
 		alphaConst("TaxIdentificationCode", 133, 134, "18"),
 		numericConst("AssessmentPeriod", 135, 142, "0"),
 		numericConst("AccumulatedGrossRevenueAmount", 143, 157, "0"),
