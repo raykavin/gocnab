@@ -24,7 +24,7 @@ var segmentNSocialSpec = layout.RecordSpec{
 		numericConst("RevenueCode", 111, 114, "1200"),
 		alphaFiller(115, 116),
 		numeric("TaxpayerIdType", 117, 118, layout.KeyTaxpayerIdType),
-		numeric("TaxpayerId", 119, 132, layout.KeyTaxpayerDocument),
+		document("TaxpayerId", 119, 132, layout.KeyTaxpayerDocument),
 		alphaConst("TaxIdentificationCode", 133, 134, "17"),
 		numeric("CompetenceMonthYear", 135, 140, layout.KeyPeriod),
 		numericDecimal("INSSExpectedAmount", 141, 155, 2, layout.KeyPrincipalAmount),

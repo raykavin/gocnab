@@ -20,7 +20,7 @@ var segmentBPixSpec = layout.RecordSpec{
 		alpha("PixKeyType", 15, 16, layout.KeyPixKeyType),
 		alphaFiller(17, 17),
 		numeric("FavoredRegistrationKind", 18, 18, layout.KeyPayeeDocumentKind),
-		numeric("FavoredCPFCNPJ", 19, 32, layout.KeyPayeeDocument),
+		document("FavoredCPFCNPJ", 19, 32, layout.KeyPayeeDocument),
 		alphaFiller(33, 62),
 		alphaFiller(63, 127),
 		alpha("PixKeyValue", 128, 226, layout.KeyPixKeyValue),

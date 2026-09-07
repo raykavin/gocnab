@@ -25,6 +25,13 @@ func parseField(f layout.FieldSpec, line string) (string, error) {
 		return raw, nil
 	case layout.KindAlphanumeric:
 		return strings.TrimRight(raw, " "), nil
+	case layout.KindDocument:
+		// raw is always exactly f.Size() characters here (a fixed-width
+		// slice of line), so there is nothing to trim or validate at parse
+		// time: a CPF, a legacy numeric CNPJ and a Receita Federal
+		// alphanumeric CNPJ all come back as-is. The caller decides what it
+		// means by feeding it to cnab.NewCPF/NewCNPJ.
+		return raw, nil
 	default:
 		return "", &FieldParseError{Field: f.Name, Reason: "unknown field kind"}
 	}

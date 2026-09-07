@@ -83,6 +83,14 @@ func numeric(name string, start, end int, key layout.Key) layout.FieldSpec {
 	return layout.FieldSpec{Name: name, Start: start, End: end, Kind: layout.KindNumeric, Key: key}
 }
 
+// document builds a CPF/CNPJ field (layout.KindDocument): zero-padded like
+// numeric for a plain-digit value (a CPF, or a legacy all-numeric CNPJ),
+// but also accepting a Receita Federal alphanumeric CNPJ (see
+// cnab.NewCNPJ) instead of rejecting it as "not numeric".
+func document(name string, start, end int, key layout.Key) layout.FieldSpec {
+	return layout.FieldSpec{Name: name, Start: start, End: end, Kind: layout.KindDocument, Key: key}
+}
+
 func numericDecimal(name string, start, end, decimals int, key layout.Key) layout.FieldSpec {
 	return layout.FieldSpec{Name: name, Start: start, End: end, Kind: layout.KindNumeric, Decimals: decimals, Key: key}
 }

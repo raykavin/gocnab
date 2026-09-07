@@ -198,8 +198,10 @@ func parseJSONFieldKind(s string) (FieldKind, error) {
 		return KindNumeric, nil
 	case "X", "ALPHANUMERIC":
 		return KindAlphanumeric, nil
+	case "D", "DOCUMENT":
+		return KindDocument, nil
 	default:
-		return 0, fmt.Errorf("invalid field kind %q (want \"9\"/\"numeric\" or \"X\"/\"alphanumeric\")", s)
+		return 0, fmt.Errorf("invalid field kind %q (want \"9\"/\"numeric\", \"X\"/\"alphanumeric\" or \"D\"/\"document\")", s)
 	}
 }
 

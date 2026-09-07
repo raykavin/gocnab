@@ -15,6 +15,20 @@ const (
 	// KindAlphanumeric marks a free-form text field ("X" in the FEBRABAN
 	// picture notation). It is left-aligned and space-padded.
 	KindAlphanumeric
+	// KindDocument marks a field carrying a CPF or CNPJ ("D", not part of
+	// the original FEBRABAN picture notation — CNAB240 layouts predate the
+	// Receita Federal's alphanumeric CNPJ rule and declared these fields
+	// KindNumeric). It renders exactly like KindNumeric (right-aligned,
+	// zero-padded) for a plain-digit value — a CPF, or a legacy all-numeric
+	// CNPJ — but also accepts a value that already fills the field's full
+	// width even when it is not all digits, which is what lets a Receita
+	// Federal alphanumeric CNPJ (12 alphanumeric "root+order" characters +
+	// 2 numeric check digits, always 14 characters — see cnab.NewCNPJ) pass
+	// through unchanged instead of being rejected as "not numeric". Use
+	// this kind only for a field whose Key holds a CPF/CNPJ document
+	// number, never for a genuinely numeric field (amount, date, sequence)
+	// where an unexpectedly wide non-digit value should still be an error.
+	KindDocument
 )
 
 // String returns a human readable name for the field kind, used in error
@@ -25,6 +39,8 @@ func (k FieldKind) String() string {
 		return "numeric"
 	case KindAlphanumeric:
 		return "alphanumeric"
+	case KindDocument:
+		return "document"
 	default:
 		return "unknown"
 	}
