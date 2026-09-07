@@ -54,6 +54,13 @@ const (
 	SegmentNSimple RecordKey = "segment_n_simple"
 	// SegmentNSocial carries a GPS (Guia da Previdência Social) payment.
 	SegmentNSocial RecordKey = "segment_n_social"
+	// SegmentZ carries payment authentication/protocol data
+	// ("autenticação"/"controle bancário"). Return-file only: no Payment
+	// kind ever produces it on a remittance: a bank appends it after a
+	// movement's primary segment to report authentication data for that
+	// movement, so it never starts a movement of its own. See
+	// cnab.ParseReturn and cnab.ReturnMovement.Authentication/BankControl.
+	SegmentZ RecordKey = "segment_z"
 )
 
 // AllRecordKeys lists every RecordKey the engine knows how to render. A
@@ -62,7 +69,7 @@ const (
 var AllRecordKeys = []RecordKey{
 	FileHeader, FileTrailer, BatchHeader, BatchTrailer,
 	SegmentA, SegmentB, SegmentBPix, SegmentJ, SegmentJ52,
-	SegmentO, SegmentN, SegmentNSimple, SegmentNSocial,
+	SegmentO, SegmentN, SegmentNSimple, SegmentNSocial, SegmentZ,
 }
 
 // IsKnownRecordKey reports whether key is one of the values in

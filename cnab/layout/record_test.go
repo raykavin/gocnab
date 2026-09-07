@@ -66,8 +66,8 @@ func TestIsKnownRecordKey(t *testing.T) {
 	if IsKnownRecordKey(RecordKey("not-a-real-key")) {
 		t.Fatal("IsKnownRecordKey(bogus) = true, want false")
 	}
-	if len(AllRecordKeys) != 13 {
-		t.Fatalf("len(AllRecordKeys) = %d, want 13", len(AllRecordKeys))
+	if len(AllRecordKeys) != 14 {
+		t.Fatalf("len(AllRecordKeys) = %d, want 14", len(AllRecordKeys))
 	}
 }
 

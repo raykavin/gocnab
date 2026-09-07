@@ -23,6 +23,6 @@ var segmentOSpec = layout.RecordSpec{
 		alpha("ClientDocumentNumber", 123, 142, layout.KeyYourNumber),
 		alphaFiller(143, 162),
 		alphaFiller(163, 230),
-		alphaFiller(231, 240),
+		alpha("OccurrenceCodes", 231, 240, layout.KeyOccurrenceCodes),
 	},
 }

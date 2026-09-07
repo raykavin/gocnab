@@ -218,6 +218,15 @@ const (
 	// interprets this field; a Layout only needs to bind the column range,
 	// never to know what a given code means.
 	KeyOccurrenceCodes Key = "occurrence_codes"
+
+	// KeyAuthentication is the payment authentication data on a return
+	// file's Segmento Z ("autenticação para atender legislação"). Return
+	// only: no Payment kind writes it on a remittance.
+	KeyAuthentication Key = "authentication"
+	// KeyBankControl is the bank's own authentication/protocol data on a
+	// return file's Segmento Z ("autenticação bancária/protocolo").
+	// Return only: no Payment kind writes it on a remittance.
+	KeyBankControl Key = "bank_control"
 )
 
 // AllKeys lists every Key constant defined in this file, structural and
@@ -244,6 +253,7 @@ var AllKeys = []Key{
 	KeyTaxCode, KeyTaxpayerDocumentKind, KeyTaxpayerIdType, KeyTaxpayerDocument, KeyTaxpayerName,
 	KeyReferenceNumber, KeyPeriod, KeyPrincipalAmount, KeyFineAmount, KeyInterestAmount,
 	KeySettlementDate, KeySettlementAmount, KeyOccurrenceCodes,
+	KeyAuthentication, KeyBankControl,
 }
 
 // IsKnownKey reports whether k is one of the values in AllKeys.
