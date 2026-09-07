@@ -12,14 +12,20 @@ import (
 )
 
 // ReturnMovement is one payment's outcome as reported by a bank on a
-// CNAB 240 return file, decoded from its Segmento A.
+// CNAB 240 return file, decoded from its Segmento A, J or O one movement
+// per credit-in-account/TED/PIX payment (Segmento A), boleto payment
+// (Segmento J its J-52 continuation is skipped) or utility/barcoded tax
+// payment (Segmento O).
 //
-// A return file's other segments (B, BPix, J, ...) carry the beneficiary's
-// document/address/PIX key back, unchanged from what the remittance sent
-// data a caller already has from its own records. ParseReturn does not
-// decode them: everything needed to reconcile a payment (whether it
-// settled, when, for how much, why not if it did not, and YourNumber to
-// match it back to the caller's own payment) lives on Segmento A alone.
+// A return file's other segments (B, BPix, J-52, ...) carry the
+// beneficiary's document/address/PIX key back, unchanged from what the
+// remittance sent data a caller already has from its own records.
+// ParseReturn does not decode them: everything needed to reconcile a
+// payment (whether it settled, when, for how much, why not if it did not,
+// and YourNumber to match it back to the caller's own payment) lives on
+// the primary segment (A, J or O) alone. Segmento N (DARF/GPS) is not
+// decoded either; add support for it the same way if your bank layout
+// needs it.
 type ReturnMovement struct {
 	// YourNumber is the payer's own reference ("seu número") echoed back
 	// unchanged from the remittance, the same value AddPayment received
@@ -50,6 +56,16 @@ type ReturnMovement struct {
 	// SDK only extracts the raw codes, matching how it treats a TED
 	// PurposeCode.
 	OccurrenceCodes []string
+
+	// Authentication and BankControl carry the payment authentication/
+	// protocol data from a trailing Segmento Z, when the bank layout
+	// implements it and the bank included one after this movement's
+	// primary segment. Both are empty when the layout does not support
+	// Segmento Z, or the bank did not send one for this movement (it is
+	// documented as optional in every manual this SDK has been built
+	// against).
+	Authentication string
+	BankControl    string
 }
 
 // Accepted reports whether the bank reported no occurrence code for this
@@ -73,18 +89,21 @@ type ReturnFile struct {
 // It splits content into 240 character lines (accepting either CRLF or
 // bare LF line endings, and tolerating a trailing blank line), classifies
 // each by its FEBRABAN-standard record type and segment code, and decodes
-// every Segmento A it finds into a ReturnMovement. Every other record kind
-// (file/batch headers and trailers, Segmento B/BPix and every other detail
-// segment) is skipped: see ReturnMovement for why Segmento A alone is
-// enough to reconcile a payment.
+// every Segmento A, J or O it finds into a ReturnMovement (a Segmento J
+// whose "Código Reg. Opcional" field, columns 18-19, reads "52" is a
+// Segmento J-52 continuation record, not a primary Segmento J movement,
+// and is skipped like every other continuation segment). Every other
+// record kind (file/batch headers and trailers, Segmento B/BPix/J-52/N
+// and any other detail segment) is skipped: see ReturnMovement for why
+// the primary segment alone is enough to reconcile a payment.
 //
 // It returns a *ValidationError if layoutName is not registered or if the
 // layout itself is malformed (the same as NewRemittance), and a
-// *ReturnParseError a type this package exports, unlike the internal
-// engine errors ParseReturn's lower-level calls actually produce if a
+// *ReturnParseError (a type this package exports, unlike the internal
+// engine errors ParseReturn's lower-level calls actually produce) if a
 // line is not exactly 240 characters, has an unrecognized record type
-// marker, or (classified as a Segmento A) has a const field whose content
-// does not match what the layout expects there.
+// marker, or (classified as a Segmento A, J or O) has a const field whose
+// content does not match what the layout expects there.
 func ParseReturn(layoutName string, content []byte) (*ReturnFile, error) {
 	l, ok := layout.Lookup(layoutName)
 	if !ok {
@@ -93,7 +112,6 @@ func ParseReturn(layoutName string, content []byte) (*ReturnFile, error) {
 			Reason:  fmt.Sprintf("layout %q is not registered (available: %v)", layoutName, layout.Names()),
 		}
 	}
-
 	eng, err := engine.New(l)
 	if err != nil {
 		return nil, err
@@ -113,18 +131,33 @@ func ParseReturn(layoutName string, content []byte) (*ReturnFile, error) {
 			return nil, &ReturnParseError{Line: lineNumber, Reason: err.Error()}
 		}
 
+		var recordKey layout.RecordKey
 		switch recordType {
 		case engine.RecordTypeFileHeader, engine.RecordTypeBatchHeader, engine.RecordTypeBatchTrailer, engine.RecordTypeFileTrailer:
 			continue
 		case engine.RecordTypeDetail:
-			if segmentCode != "A" {
+			switch {
+			case segmentCode == "A":
+				recordKey = layout.SegmentA
+			case segmentCode == "O":
+				recordKey = layout.SegmentO
+			case segmentCode == "J" && !isSegmentJ52(line):
+				recordKey = layout.SegmentJ
+			case segmentCode == "Z":
+				if err := attachSegmentZ(eng, line, result); err != nil {
+					return nil, returnParseErrorFor(lineNumber, err)
+				}
+				continue
+			default:
+				// Segmento J-52, B, BPix, N and any other detail segment:
+				// a continuation record, not a primary movement.
 				continue
 			}
 		default:
 			return nil, &ReturnParseError{Line: lineNumber, Reason: fmt.Sprintf("unrecognized record type %q", recordType)}
 		}
 
-		movement, err := parseReturnMovement(eng, line)
+		movement, err := parseReturnMovement(eng, recordKey, line)
 		if err != nil {
 			return nil, returnParseErrorFor(lineNumber, err)
 		}
@@ -149,8 +182,57 @@ func returnParseErrorFor(line int, err error) error {
 	return &ReturnParseError{Line: line, Reason: err.Error()}
 }
 
-func parseReturnMovement(eng *engine.Engine, line string) (ReturnMovement, error) {
-	values, err := eng.ParseRecord(layout.SegmentA, line)
+// segmentJ52IdentifierColumn is the 1-based, inclusive column range of the
+// "Código Reg. Opcional" field FEBRABAN uses to tell a Segmento J-52
+// continuation record apart from a primary Segmento J one: both share
+// segment code "J" at column 14 (see engine.ClassifyLine), so this second
+// marker is the only way to distinguish them before deciding which
+// RecordSpec to parse the line with. Fixed by the FEBRABAN standard
+// itself, the same way engine.ClassifyLine's own column positions are.
+const (
+	segmentJ52IdentifierStart = 18
+	segmentJ52IdentifierEnd   = 19
+	segmentJ52Identifier      = "52"
+)
+
+// isSegmentJ52 reports whether line is a Segmento J-52 continuation
+// record rather than a primary Segmento J movement. It is only meaningful
+// for a line engine.ClassifyLine already reported as record type "3"
+// (detail) with segment code "J".
+func isSegmentJ52(line string) bool {
+	if len(line) < segmentJ52IdentifierEnd {
+		return false
+	}
+	return line[segmentJ52IdentifierStart-1:segmentJ52IdentifierEnd] == segmentJ52Identifier
+}
+
+// attachSegmentZ decodes a Segmento Z line and attaches its authentication/
+// bank control data to the most recently appended movement in result:
+// per every manual this SDK has been built against, a bank appends Z
+// right after the primary segment of the movement it authenticates, so it
+// never starts a movement of its own. It is a no-op (not an error) when
+// the active layout does not implement Segmento Z, or when result has no
+// movement yet to attach to (a malformed or truncated file parsing
+// continues rather than failing on what is, per every manual, optional
+// data).
+func attachSegmentZ(eng *engine.Engine, line string, result *ReturnFile) error {
+	if !eng.Supports(layout.SegmentZ) || len(result.Movements) == 0 {
+		return nil
+	}
+
+	values, err := eng.ParseRecord(layout.SegmentZ, line)
+	if err != nil {
+		return err
+	}
+
+	last := &result.Movements[len(result.Movements)-1]
+	last.Authentication = stringValue(values, layout.KeyAuthentication)
+	last.BankControl = stringValue(values, layout.KeyBankControl)
+	return nil
+}
+
+func parseReturnMovement(eng *engine.Engine, key layout.RecordKey, line string) (ReturnMovement, error) {
+	values, err := eng.ParseRecord(key, line)
 	if err != nil {
 		return ReturnMovement{}, err
 	}
