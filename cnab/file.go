@@ -36,16 +36,9 @@ func NewRemittance(cfg Config) (*File, error) {
 	if cfg.NSA <= 0 {
 		return nil, &ValidationError{Context: "Config", Reason: "NSA must be greater than zero"}
 	}
-	if strings.TrimSpace(cfg.Layout) == "" {
-		return nil, &ValidationError{Context: "Config", Reason: "Layout is required"}
-	}
-
-	l, ok := layout.Lookup(cfg.Layout)
-	if !ok {
-		return nil, &ValidationError{
-			Context: "Config",
-			Reason:  fmt.Sprintf("layout %q is not registered (available: %v)", cfg.Layout, layout.Names()),
-		}
+	l, err := resolveLayout(cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	eng, err := engine.New(l)
@@ -54,6 +47,25 @@ func NewRemittance(cfg Config) (*File, error) {
 	}
 
 	return &File{config: cfg, engine: eng, layout: l}, nil
+}
+
+// resolveLayout picks the Layout a Config names: the instance in
+// LayoutSpec when given, otherwise the registry entry under Layout.
+func resolveLayout(cfg Config) (Layout, error) {
+	if cfg.LayoutSpec != nil {
+		return cfg.LayoutSpec, nil
+	}
+	if strings.TrimSpace(cfg.Layout) == "" {
+		return nil, &ValidationError{Context: "Config", Reason: "Layout or LayoutSpec is required"}
+	}
+	l, ok := layout.Lookup(cfg.Layout)
+	if !ok {
+		return nil, &ValidationError{
+			Context: "Config",
+			Reason:  fmt.Sprintf("layout %q is not registered (available: %v)", cfg.Layout, layout.Names()),
+		}
+	}
+	return l, nil
 }
 
 // NewBatch starts a new batch ("lote") for product settled via service,

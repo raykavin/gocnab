@@ -131,6 +131,76 @@ func TestRenderFieldNumericErrors(t *testing.T) {
 	}
 }
 
+// TestRenderFieldDocument covers layout.KindDocument: a CPF/CNPJ field
+// shared by two documents of different length (11-digit CPF, 14-character
+// CNPJ), where a Receita Federal alphanumeric CNPJ must render exactly
+// like a legacy numeric one instead of being rejected as "not numeric".
+func TestRenderFieldDocument(t *testing.T) {
+	cases := []struct {
+		name  string
+		field layout.FieldSpec
+		value string
+		want  string
+	}{
+		{
+			name:  "CPF zero-padded in a 14-wide field",
+			field: layout.FieldSpec{Name: "Document", Start: 1, End: 14, Kind: layout.KindDocument, Key: layout.KeyPayerDocument},
+			value: "11144477735",
+			want:  "00011144477735",
+		},
+		{
+			name:  "legacy numeric CNPJ exactly fills a 14-wide field",
+			field: layout.FieldSpec{Name: "Document", Start: 1, End: 14, Kind: layout.KindDocument, Key: layout.KeyPayerDocument},
+			value: "11222333000181",
+			want:  "11222333000181",
+		},
+		{
+			name:  "alphanumeric CNPJ exactly fills a 14-wide field",
+			field: layout.FieldSpec{Name: "Document", Start: 1, End: 14, Kind: layout.KindDocument, Key: layout.KeyPayerDocument},
+			value: "12ABC34501DE35",
+			want:  "12ABC34501DE35",
+		},
+		{
+			name:  "alphanumeric CNPJ zero-padded in a wider (15) field",
+			field: layout.FieldSpec{Name: "Document", Start: 1, End: 15, Kind: layout.KindDocument, Key: layout.KeyPayerDocument},
+			value: "12ABC34501DE35",
+			want:  "012ABC34501DE35",
+		},
+		{
+			name:  "CPF zero-padded in the same wider (15) field",
+			field: layout.FieldSpec{Name: "Document", Start: 1, End: 15, Kind: layout.KindDocument, Key: layout.KeyPayerDocument},
+			value: "11144477735",
+			want:  "000011144477735",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			values := layout.Values{c.field.Key: c.value}
+			got, err := renderField(c.field, values)
+			if err != nil {
+				t.Fatalf("renderField() error = %v", err)
+			}
+			if got != c.want {
+				t.Fatalf("renderField() = %q, want %q", got, c.want)
+			}
+			if len(got) != c.field.Size() {
+				t.Fatalf("rendered length = %d, want %d", len(got), c.field.Size())
+			}
+		})
+	}
+}
+
+// TestRenderFieldDocumentErrors confirms a value wider than the field is
+// still a hard error, the same as KindNumeric.
+func TestRenderFieldDocumentErrors(t *testing.T) {
+	field := layout.FieldSpec{Name: "Document", Start: 1, End: 10, Kind: layout.KindDocument, Key: layout.KeyPayerDocument}
+	values := layout.Values{field.Key: "12ABC34501DE35"}
+	if _, err := renderField(field, values); err == nil {
+		t.Fatal("renderField() error = nil, want an error for a value wider than the field")
+	}
+}
+
 func TestRenderFieldAlphanumeric(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -221,5 +291,40 @@ func TestUnknownFieldKind(t *testing.T) {
 	field := layout.FieldSpec{Name: "Broken", Start: 1, End: 5, Kind: layout.FieldKind(99)}
 	if _, err := renderField(field, layout.Values{}); err == nil {
 		t.Fatal("renderField() error = nil, want an error for an unknown field kind")
+	}
+}
+
+// TestRenderAlphanumeric_Lowercase covers the Layout-declared lowercase rule:
+// the charset is still validated against CNAB's upper case alphabet, so the
+// only difference is the case of the rendered output.
+func TestRenderAlphanumeric_Lowercase(t *testing.T) {
+	spec := layout.FieldSpec{Name: "Key", Start: 1, End: 30, Kind: layout.KindAlphanumeric, Key: "k", Lowercase: true}
+
+	got, err := renderField(spec, layout.Values{"k": "Fornecedor@Exemplo.COM.br"})
+	if err != nil {
+		t.Fatalf("renderField() error = %v", err)
+	}
+	if want := "fornecedor@exemplo.com.br     "; got != want {
+		t.Errorf("renderField() = %q, want %q", got, want)
+	}
+}
+
+func TestRenderAlphanumeric_LowercaseStillRejectsForbiddenCharacters(t *testing.T) {
+	spec := layout.FieldSpec{Name: "Key", Start: 1, End: 10, Kind: layout.KindAlphanumeric, Key: "k", Lowercase: true}
+
+	if _, err := renderField(spec, layout.Values{"k": "a\tb"}); err == nil {
+		t.Error("expected a forbidden character to be rejected in a lowercase field too")
+	}
+}
+
+func TestRenderAlphanumeric_UppercaseByDefault(t *testing.T) {
+	spec := layout.FieldSpec{Name: "Name", Start: 1, End: 10, Kind: layout.KindAlphanumeric, Key: "k"}
+
+	got, err := renderField(spec, layout.Values{"k": "empresa"})
+	if err != nil {
+		t.Fatalf("renderField() error = %v", err)
+	}
+	if want := "EMPRESA   "; got != want {
+		t.Errorf("renderField() = %q, want %q", got, want)
 	}
 }

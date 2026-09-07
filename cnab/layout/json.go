@@ -23,13 +23,14 @@ type jsonRecordSpec struct {
 }
 
 type jsonFieldSpec struct {
-	Name     string `json:"name,omitempty"`
-	Start    int    `json:"start"`
-	End      int    `json:"end"`
-	Kind     string `json:"kind"`
-	Decimals int    `json:"decimals,omitempty"`
-	Key      string `json:"key,omitempty"`
-	Const    string `json:"const,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Start     int    `json:"start"`
+	End       int    `json:"end"`
+	Kind      string `json:"kind"`
+	Decimals  int    `json:"decimals,omitempty"`
+	Key       string `json:"key,omitempty"`
+	Const     string `json:"const,omitempty"`
+	Lowercase bool   `json:"lowercase,omitempty"`
 }
 
 // jsonLayout is the Layout implementation NewFromJSON builds.
@@ -62,6 +63,8 @@ func (l *jsonLayout) Record(key RecordKey) (RecordSpec, bool) {
 //     range (1 <= start <= end <= 240).
 //   - a field sets at most one of "key" or "const", never both.
 //   - a field's "key", when set, must be one of the values in AllKeys.
+//   - a field may set "lowercase": true to be rendered in lower case
+//     instead of CNAB's usual upper case (alphanumeric fields only).
 //   - every record's fields must cover columns 1-240 with no gap and no
 //     overlap (the same check RecordSpec.Validate and the engine run).
 //
@@ -175,13 +178,14 @@ func parseJSONFieldSpec(rf jsonFieldSpec) (FieldSpec, error) {
 	}
 
 	return FieldSpec{
-		Name:     fieldLabel(rf),
-		Start:    rf.Start,
-		End:      rf.End,
-		Kind:     kind,
-		Decimals: rf.Decimals,
-		Key:      key,
-		Const:    rf.Const,
+		Name:      fieldLabel(rf),
+		Start:     rf.Start,
+		End:       rf.End,
+		Kind:      kind,
+		Decimals:  rf.Decimals,
+		Key:       key,
+		Const:     rf.Const,
+		Lowercase: rf.Lowercase,
 	}, nil
 }
 
@@ -198,8 +202,10 @@ func parseJSONFieldKind(s string) (FieldKind, error) {
 		return KindNumeric, nil
 	case "X", "ALPHANUMERIC":
 		return KindAlphanumeric, nil
+	case "D", "DOCUMENT":
+		return KindDocument, nil
 	default:
-		return 0, fmt.Errorf("invalid field kind %q (want \"9\"/\"numeric\" or \"X\"/\"alphanumeric\")", s)
+		return 0, fmt.Errorf("invalid field kind %q (want \"9\"/\"numeric\", \"X\"/\"alphanumeric\" or \"D\"/\"document\")", s)
 	}
 }
 

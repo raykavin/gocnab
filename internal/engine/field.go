@@ -19,8 +19,13 @@ func renderField(f layout.FieldSpec, values layout.Values) (string, error) {
 		return renderNumeric(f, raw)
 	case layout.KindAlphanumeric:
 		return renderAlphanumeric(f, raw)
+	case layout.KindDocument:
+		return renderDocument(f, raw)
 	default:
-		return "", &FieldRenderError{Field: f.Name, Reason: "unknown field kind"}
+		return "", &FieldRenderError{
+			Field:  f.Name,
+			Reason: "unknown field kind",
+		}
 	}
 }
 
@@ -70,19 +75,28 @@ func numericDigits(f layout.FieldSpec, raw any) (string, error) {
 			return scaleDecimalString(f, v)
 		}
 		if !isDigitsOnly(v) {
-			return "", &FieldRenderError{Field: f.Name, Reason: "value \"" + v + "\" is not numeric"}
+			return "", &FieldRenderError{
+				Field:  f.Name,
+				Reason: "value \"" + v + "\" is not numeric",
+			}
 		}
 		return v, nil
 	}
 
 	if n, ok := intValue(raw); ok {
 		if n < 0 {
-			return "", &FieldRenderError{Field: f.Name, Reason: "negative values are not supported in numeric fields"}
+			return "", &FieldRenderError{
+				Field:  f.Name,
+				Reason: "negative values are not supported in numeric fields",
+			}
 		}
 		return strconv.FormatInt(n, 10), nil
 	}
 
-	return "", &FieldRenderError{Field: f.Name, Reason: "unsupported numeric value type " + reflect.TypeOf(raw).String()}
+	return "", &FieldRenderError{
+		Field:  f.Name,
+		Reason: "unsupported numeric value type " + reflect.TypeOf(raw).String(),
+	}
 }
 
 // intValue extracts an int64 from any value whose underlying kind is an
@@ -115,9 +129,37 @@ func scaleDecimalString(f layout.FieldSpec, v string) (string, error) {
 	fracPart += strings.Repeat("0", f.Decimals-len(fracPart))
 	digits := intPart + fracPart
 	if !isDigitsOnly(digits) {
-		return "", &FieldRenderError{Field: f.Name, Reason: "value \"" + v + "\" is not a valid decimal number"}
+		return "", &FieldRenderError{
+			Field:  f.Name,
+			Reason: "value \"" + v + "\" is not a valid decimal number",
+		}
 	}
 	return digits, nil
+}
+
+// renderDocument renders a CPF/CNPJ field. A plain-digit value (a CPF, or a
+// legacy all-numeric CNPJ) renders exactly like KindNumeric: right-aligned
+// and zero-padded. A value that is not all digits — a Receita Federal
+// alphanumeric CNPJ (see cnab.NewCNPJ), whose 12 "root+order" characters
+// may include uppercase letters — is right-aligned and zero-padded the
+// same way instead of being rejected as "not numeric": these CPF/CNPJ
+// fields are sized to also fit an 11-digit CPF, so a 14-character CNPJ
+// commonly still needs leading zeros to fill the field, exactly like a
+// legacy numeric CNPJ would. Padding only ever prepends zeros before the
+// value, so it never touches the CNPJ's own characters. A value wider than
+// the field is a hard error, same as KindNumeric.
+func renderDocument(f layout.FieldSpec, raw any) (string, error) {
+	v, ok := raw.(string)
+	if !ok || v == "" || isDigitsOnly(v) {
+		return renderNumeric(f, raw)
+	}
+	if len(v) > f.Size() {
+		return "", &FieldRenderError{
+			Field:  f.Name,
+			Reason: "value \"" + v + "\" needs " + strconv.Itoa(len(v)) + " characters but the field only has " + strconv.Itoa(f.Size()),
+		}
+	}
+	return strings.Repeat("0", f.Size()-len(v)) + v, nil
 }
 
 func isDigitsOnly(s string) bool {
@@ -137,8 +179,17 @@ func isDigitsOnly(s string) bool {
 // matching how banks handle overlong names in practice.
 func renderAlphanumeric(f layout.FieldSpec, raw any) (string, error) {
 	s := strings.ToUpper(alphaString(raw))
+	// The charset is validated on the upper case form, which is the one CNAB
+	// defines. Folding happens afterwards, so a Lowercase field still rejects
+	// exactly the characters every other field rejects.
 	if err := validateCharset(s); err != nil {
-		return "", &FieldRenderError{Field: f.Name, Reason: err.Error()}
+		return "", &FieldRenderError{
+			Field:  f.Name,
+			Reason: err.Error(),
+		}
+	}
+	if f.Lowercase {
+		s = strings.ToLower(s)
 	}
 	if len(s) > f.Size() {
 		s = s[:f.Size()]

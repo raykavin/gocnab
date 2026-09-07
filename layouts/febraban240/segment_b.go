@@ -18,7 +18,7 @@ var segmentBSpec = layout.RecordSpec{
 		alphaConst("SegmentCode", 14, 14, "B"),
 		alphaFiller(15, 17),
 		numeric("FavoredRegistrationKind", 18, 18, layout.KeyPayeeDocumentKind),
-		numeric("FavoredCPFCNPJ", 19, 32, layout.KeyPayeeDocument),
+		document("FavoredCPFCNPJ", 19, 32, layout.KeyPayeeDocument),
 		alpha("AddressStreet", 33, 62, layout.KeyPayeeAddressStreet),
 		numeric("AddressNumber", 63, 67, layout.KeyPayeeAddressNumber),
 		alphaFiller(68, 82),
