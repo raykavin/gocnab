@@ -34,7 +34,8 @@ func main() {
 		log.Fatalf("NewRemittance: %v", err)
 	}
 
-	batch, err := file.NewBatch(cnab.SupplierPayment, cnab.TaxWithoutBarcodeService)
+	// Tributos ride the tax product (22), not the supplier one (20).
+	batch, err := file.NewBatch(cnab.TaxPayment, cnab.DARFService)
 	if err != nil {
 		log.Fatalf("NewBatch: %v", err)
 	}

@@ -253,18 +253,24 @@ Alguns bancos (por exemplo o Sicredi) exigem que pagamento de boleto e pagamento
 Identifica a forma de lançamento de um lote (sem campos exportados; use sempre uma constante predefinida):
 
 ```go
-var CreditInAccount          = BatchService{...} // "01", crédito em conta, mesmo banco
-var TEDTransfer              = BatchService{...} // "41", TED
-var PixTransfer              = BatchService{...} // "45", PIX (por chave ou por dados bancários)
-var BoletoService            = BatchService{...} // "30", boleto do próprio banco
-var OtherBankBoletoService   = BatchService{...} // "31", boleto de outros bancos
-var BarcodeTaxService        = BatchService{...} // "22", conta/tributo com código de barras
-var TaxWithoutBarcodeService = BatchService{...} // "17", DARF/GPS sem código de barras
+var CreditInAccount        = BatchService{...} // "01", crédito em conta, mesmo banco
+var TEDTransfer            = BatchService{...} // "41", TED
+var PixTransfer            = BatchService{...} // "45", PIX (por chave ou por dados bancários)
+var BoletoService          = BatchService{...} // "30", boleto do próprio banco
+var OtherBankBoletoService = BatchService{...} // "31", boleto de outros bancos
+var BarcodeTaxService      = BatchService{...} // "11", conta/tributo com código de barras
+var DARFService            = BatchService{...} // "16", DARF normal
+var GPSService             = BatchService{...} // "17", GPS
+var DARFSimpleService      = BatchService{...} // "18", DARF Simples
 ```
 
 `func (s BatchService) String() string` retorna um nome descritivo.
 
 `BoletoService` e `OtherBankBoletoService` rendem exatamente o mesmo Segmento J; o que muda é só o código de forma de lançamento do lote. A escolha depende de qual banco emitiu o boleto que está sendo pago, não de nenhuma propriedade do `BoletoPayment`, e alguns bancos rejeitam o lote que usa o código errado.
+
+Tributo sem código de barras tem uma forma de lançamento por tributo: `DARFService` carrega o Segmento N, `GPSService` o Segmento N2 e `DARFSimpleService` o Segmento N3. O banco lê o código para saber qual dos três esperar, então cada tipo de pagamento precisa do serviço correspondente (`DARF` com `DARFService`, `GPS` com `GPSService`, `DARFSimple` com `DARFSimpleService`).
+
+Os lotes de tributo costumam usar o produto `TaxPayment` (`"22"`), e não `SupplierPayment`; confirme no manual do seu banco.
 
 ---
 
