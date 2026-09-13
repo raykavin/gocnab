@@ -9,6 +9,7 @@ Convenções usadas neste documento: valores monetários são sempre `cnab.Cents
 - [Configuração, empresa e conta](#configuração-empresa-e-conta)
 - [Documentos (CPF/CNPJ)](#documentos-cpfcnpj)
 - [Dinheiro](#dinheiro)
+- [Texto livre](#texto-livre)
 - [Arquivo e lote](#arquivo-e-lote)
 - [Nome do arquivo de remessa](#nome-do-arquivo-de-remessa)
 - [Produtos e serviços de lote](#produtos-e-serviços-de-lote)
@@ -160,6 +161,32 @@ type Cents int64
 ```
 
 Valor monetário como inteiro na unidade mínima da moeda (R$ 252,00 é `Cents(25200)`).
+
+---
+
+## Texto livre
+
+### `func Sanitize`
+
+```go
+func Sanitize(s string) string
+```
+
+Prepara texto livre para um campo alfanumérico CNAB: maiúsculiza, troca letras acentuadas pelo equivalente ASCII sem acento (`"JOSÉ"` vira `"JOSE"`, `"AÇÃO"` vira `"ACAO"`) e descarta todo caractere restante que o CNAB não aceita (`"A & B"` vira `"A  B"`).
+
+A renderização nunca faz isso por conta própria: um caractere que o campo não pode carregar é reportado como `*FieldError` nomeando o campo, porque em um documento, um código de barras, um número de conta ou uma chave PIX, descartar parte do valor em silêncio mudaria quem recebe o pagamento. Sanitizar é, portanto, opt-in, e quem chama decide quais dos seus valores são texto livre cuja grafia exata não importa (o nome do pagador ou do favorecido, tipicamente, que o banco só reproduz num extrato) e quais são identificadores que precisam chegar ao banco exatamente como foram dados, ou não chegar.
+
+`Sanitize` pode devolver uma string vazia ou em branco, para um valor formado só por caracteres que o CNAB recusa. Quem exige um valor deve conferir o resultado em vez de repassá-lo: `Company` e `Payee` recusam um `Name` em branco, que é o erro a preferir sobre um arquivo que não nomeia ninguém.
+
+### `func AllowedInField`
+
+```go
+func AllowedInField(s string) bool
+```
+
+Informa se todo caractere de `s` pode ser renderizado em um campo alfanumérico CNAB como está, ou seja, se `Sanitize` o deixaria inalterado a menos da caixa. Use para validar cedo um identificador que não pode ser reescrito, um código de convênio por exemplo, onde o erro pode nomear o campo que o operador tem de corrigir, em vez de aparecer só na renderização.
+
+O conjunto aceito é: `A-Z`, `0-9`, espaço e `.,/-:()+*@_`.
 
 ---
 

@@ -1,6 +1,9 @@
 package engine
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // allowedSymbols lists the non-alphanumeric characters accepted in
 // alphanumeric fields, besides the space character. This starts from the
@@ -42,6 +45,14 @@ func Sanitize(s string) string {
 	return b.String()
 }
 
+// AllowedInField reports whether every rune of s is renderable into a
+// CNAB alphanumeric field as it stands. It answers on the upper case form,
+// the one CNAB defines and the one renderAlphanumeric validates, so a
+// lower case name is not reported as invalid for its case alone.
+func AllowedInField(s string) bool {
+	return validateCharset(strings.ToUpper(s)) == nil
+}
+
 func isAllowedRune(r rune) bool {
 	switch {
 	case r >= '0' && r <= '9':
@@ -69,5 +80,10 @@ type charsetError struct {
 }
 
 func (e *charsetError) Error() string {
-	return "character " + string(e.rune) + " is not allowed in a CNAB field; call engine.Sanitize (or cnab.Sanitize) first if this is expected input"
+	// The remedy names cnab.Sanitize, the exported one: this package is
+	// internal to the module, so a caller outside it cannot reach
+	// engine.Sanitize even though that is what ultimately runs.
+	return "character " + strconv.QuoteRune(e.rune) +
+		" is not allowed in a CNAB field (allowed: A-Z, 0-9, space and " + allowedSymbols +
+		"); pass the value through cnab.Sanitize first if it is free-form text such as a name"
 }
