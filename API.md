@@ -10,6 +10,7 @@ Convenções usadas neste documento: valores monetários são sempre `cnab.Cents
 - [Documentos (CPF/CNPJ)](#documentos-cpfcnpj)
 - [Dinheiro](#dinheiro)
 - [Arquivo e lote](#arquivo-e-lote)
+- [Nome do arquivo de remessa](#nome-do-arquivo-de-remessa)
 - [Produtos e serviços de lote](#produtos-e-serviços-de-lote)
 - [Tipos de pagamento](#tipos-de-pagamento)
 - [PIX](#pix)
@@ -27,12 +28,14 @@ Convenções usadas neste documento: valores monetários são sempre `cnab.Cents
 
 ```go
 type Config struct {
-    Layout      string
-    LayoutSpec  Layout
-    Company     Company
-    Account     Account
-    NSA         int
-    FileDensity int
+    Layout         string
+    LayoutSpec     Layout
+    Company        Company
+    Account        Account
+    NSA            int
+    FileDensity    int
+    FileNameLayout FileNameLayout
+    FileNameValues map[string]string
 }
 ```
 
@@ -44,6 +47,8 @@ Agrupa tudo que `NewRemittance` precisa para iniciar um arquivo de remessa.
 - `Account`: a conta bancária de onde saem os pagamentos do arquivo.
 - `NSA`: número sequencial do arquivo, positivo, controlado pelo chamador entre os arquivos que ele envia a um mesmo banco.
 - `FileDensity`: densidade de gravação que alguns manuais exigem no header de arquivo (por exemplo `1600` ou `6250`). Opcional: um `Layout` que não amarra `layout.KeyFileDensity` simplesmente nunca lê este campo.
+- `FileNameLayout`: a convenção de nome de arquivo que `File.FileName` renderiza para este arquivo, sobrepondo o padrão global. Prefira este campo ao global sempre que um mesmo processo gerar arquivos para mais de um banco. Veja "Nome do arquivo de remessa".
+- `FileNameValues`: os valores dos campos `Custom` da `FileNameLayout` deste arquivo, indexados pelo nome com que cada campo foi criado. Opcional: uma convenção sem campo `Custom` nunca o lê.
 
 ### `type Company`
 
@@ -208,11 +213,16 @@ Antes de gerar, `Generate` revalida que nenhuma data de pagamento se tornou retr
 
 ```go
 func (f *File) FileName() (string, error)
+func (f *File) FileNameInput(now time.Time) FileNameInput
 ```
 
-Sugere um nome de arquivo, combinando o nome do layout ativo, o NSA configurado e a data atual (formato `LAYOUT_NNNN_AAAAMMDD.REM`). A maioria dos bancos só exige uma extensão específica (geralmente `.REM`); renomeie o resultado se seu banco exigir outra convenção.
+`FileName` renderiza o nome do arquivo pela convenção que o arquivo resolve, nesta ordem: `Config.FileNameLayout`, depois a convenção global instalada por `SetRemittanceFileNameLayout`, depois o padrão embutido `LAYOUT_NNNN_AAAAMMDD.REM`, que continua sendo o que recebe quem nunca configurou uma convenção. Veja "Nome do arquivo de remessa".
 
-**Erros:** `*ValidationError` se o arquivo não tiver nenhum lote ainda.
+O NSA renderizado é sempre `Config.NSA`, o mesmo número sequencial gravado no header do arquivo, então o nome nunca pode anunciar uma sequência que o próprio arquivo não carrega.
+
+`FileNameInput` devolve os valores que uma `FileNameLayout` extrai deste arquivo no instante `now`. É exportado para quem quer renderizar o mesmo nome por uma convenção própria, por exemplo para reservar o nome antes de o arquivo ser montado, sem repetir de onde vem cada valor.
+
+**Erros:** `*ValidationError` se o arquivo não tiver nenhum lote ainda, ou se a convenção resolvida não conseguir renderizar um nome válido a partir dos dados deste arquivo (veja `FileNameLayout.Render`).
 
 ### `type Batch` / `func (*Batch) AddPayment`
 
@@ -228,6 +238,124 @@ Valida `p` e o adiciona ao lote como um novo movimento. A validação cobre todo
 - `*ValidationError` para um campo obrigatório ausente/inválido, ou para um `p` que seja `nil`.
 - `*ValidationError` se o layout ativo não suportar um segmento necessário.
 - `*LimitExceededError{Limit: "movements_per_batch", ...}` quando o lote já tem 10.000 movimentos.
+
+---
+
+## Nome do arquivo de remessa
+
+Bancos não compartilham convenção de nome de arquivo além da extensão. Em vez de fixar alguma, o SDK deixa a convenção ser descrita como uma lista ordenada de campos, cada um puxando um valor e formatando a si mesmo.
+
+`File.FileName` resolve a convenção nesta ordem: `Config.FileNameLayout`, depois a global de `SetRemittanceFileNameLayout`, depois o padrão embutido `LAYOUT_NNNN_AAAAMMDD.REM`.
+
+### `type FileNameField`
+
+Um componente do nome: um literal, ou um valor dinâmico tirado da configuração do arquivo ou do instante de geração, junto com a formatação dele.
+
+```go
+type FileNameField struct{ /* campos privados */ }
+
+// campos dinâmicos prontos
+var AgreementCode    FileNameField // Config.Company.Agreement
+var BranchNumber     FileNameField // Config.Account.Branch
+var AccountNumber    FileNameField // Config.Account.Number
+var LayoutName       FileNameField // nome do layout ativo, maiúsculo
+var LayoutVersion    FileNameField // versão do layout ativo
+var NSASequence      FileNameField // Config.NSA
+var CurrentDay       FileNameField // dia do mês, 2 dígitos
+var CurrentMonth     FileNameField // mês, 2 dígitos
+var CurrentYear      FileNameField // ano, 4 dígitos
+var CurrentShortYear FileNameField // ano, 2 dígitos
+var CurrentDate      FileNameField // AAAAMMDD
+
+// construtores
+func Literal(text string) FileNameField        // texto fixo
+func Date(timeLayout string) FileNameField     // instante de geração, no layout de referência do time
+func Custom(name string) FileNameField         // valor vindo de Config.FileNameValues[name]
+
+// modificadores, todos devolvendo uma cópia
+func (f FileNameField) Width(n int) FileNameField
+func (f FileNameField) Pad(r rune) FileNameField
+func (f FileNameField) PadLeft() FileNameField
+func (f FileNameField) PadRight() FileNameField
+func (f FileNameField) Truncate() FileNameField
+func (f FileNameField) Upper() FileNameField
+func (f FileNameField) Lower() FileNameField
+```
+
+Os campos são valores imutáveis: todo modificador devolve uma cópia, então os protótipos exportados podem ser compartilhados e reusados entre convenções.
+
+`Width(n)` fixa a largura exata; um valor mais curto é preenchido, e um mais longo é erro, a menos que `Truncate` tenha sido chamado. Deixe `Truncate` desligado em qualquer campo que identifica o arquivo: um NSA truncado de 100 para `"00"` nomeia um arquivo que o banco já recebeu.
+
+`NSASequence` renderiza sempre o `Config.NSA`, o mesmo número gravado no header. Um banco cuja sequência do nome não é a do header (a do Sicredi, por exemplo, reinicia todo dia enquanto o NSA continua subindo) deve passar essa outra sequência como um campo `Custom`.
+
+`Custom(name)` falha na renderização quando `name` não tem valor, em vez de deixar um buraco silencioso no nome.
+
+### `type FileNameLayout`
+
+```go
+type FileNameLayout struct {
+    Fields    []FileNameField
+    Extension string // com o ponto, por exemplo ".REM"; vazio usa ".REM"
+    MaxLength int    // 0 usa o limite embutido de 255
+}
+
+const ExtensionNone = "-" // nenhuma extensão, diferente da string vazia
+
+func NewFileNameLayout(fields ...FileNameField) FileNameLayout
+func (l FileNameLayout) WithExtension(ext string) FileNameLayout
+func (l FileNameLayout) WithMaxLength(n int) FileNameLayout
+func (l FileNameLayout) IsZero() bool
+func (l FileNameLayout) Validate() error
+func (l FileNameLayout) Render(in FileNameInput) (string, error)
+```
+
+Descreve a convenção de um banco: os campos do radical, na ordem, a extensão e o comprimento que o banco aceita. Um banco que documenta uma largura exata deve informar `MaxLength`, para que uma convenção que renderiza demais falhe aqui e não no banco.
+
+O nome renderizado só admite letras, dígitos e os separadores `_`, `-` e `$`, de modo que um acento, um espaço, uma barra ou um ponto vindo de um código de convênio não produza um nome recusado, renomeado em silêncio ou lido como caminho.
+
+### `type FileNameInput`
+
+```go
+type FileNameInput struct {
+    AgreementCode string
+    Branch        string
+    AccountNumber string
+    LayoutName    string
+    LayoutVersion string
+    NSA           int
+    Now           time.Time // zero significa time.Now(), resolvido uma vez por Render
+    Values        map[string]string
+}
+```
+
+Os valores de onde uma `FileNameLayout` renderiza. `File.FileNameInput` monta um a partir do arquivo. `Now` é resolvido uma única vez por `Render`, então dois campos de data de um mesmo nome nunca podem cair em lados opostos da meia-noite.
+
+### `func SetRemittanceFileNameLayout` / `func RemittanceFileNameLayout`
+
+```go
+func SetRemittanceFileNameLayout(fields ...FileNameField) error
+func RemittanceFileNameLayout() FileNameLayout
+```
+
+Instalam e leem a convenção global do processo, protegidas para uso concorrente. `SetRemittanceFileNameLayout` valida os campos antes de instalar e devolve `*ValidationError` descrevendo o problema, deixando a convenção anterior no lugar, de modo que uma convenção inválida é reportada onde é declarada e não quando o primeiro arquivo é nomeado. Sem nenhum campo, restaura o padrão embutido.
+
+Num processo que gera arquivos para vários bancos, use `Config.FileNameLayout` por arquivo: a global é única e quem escreve por último vence.
+
+**Exemplo:**
+
+```go
+// 6CBY2701.REM: convênio, dia do mês e NSA em dois dígitos
+err := cnab.SetRemittanceFileNameLayout(
+    cnab.AgreementCode.Width(4),
+    cnab.CurrentDay,
+    cnab.NSASequence.Width(2),
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+name, err := file.FileName()
+```
 
 ---
 

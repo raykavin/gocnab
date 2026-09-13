@@ -94,15 +94,49 @@ func (f *File) NewBatch(product BatchProduct, service BatchService) (*Batch, err
 	return b, nil
 }
 
-// FileName suggests a file name for the remittance, combining the active
-// layout name, the configured NSA and the current date. Banks generally
-// only require a specific extension (commonly ".REM"); rename the result
-// if your bank expects a different convention.
+// FileName renders the remittance's file name through the FileNameLayout
+// this file resolves: Config.FileNameLayout when set, otherwise the
+// process wide layout installed by SetRemittanceFileNameLayout, otherwise
+// the historical "<LAYOUT>_<NSA>_<YYYYMMDD>.REM" — which is what every
+// caller that never configured a convention keeps getting.
+//
+// The NSA it renders is always Config.NSA, the same sequence number
+// stamped into the file header, so the name can never name a sequence the
+// file itself does not carry.
+//
+// It returns a *ValidationError when the file holds no batch, or when the
+// resolved layout cannot render a valid name from this file's data (see
+// FileNameLayout.Render).
 func (f *File) FileName() (string, error) {
 	if len(f.batches) == 0 {
 		return "", &ValidationError{Context: "FileName", Reason: "file must have at least one batch"}
 	}
-	return fmt.Sprintf("%s_%04d_%s.REM", strings.ToUpper(f.engine.LayoutName()), f.config.NSA, time.Now().Format("20060102")), nil
+
+	l := f.config.FileNameLayout
+	if l.IsZero() {
+		l = RemittanceFileNameLayout()
+	}
+	if l.IsZero() {
+		return fmt.Sprintf("%s_%04d_%s.REM", strings.ToUpper(f.engine.LayoutName()), f.config.NSA, time.Now().Format("20060102")), nil
+	}
+	return l.Render(f.FileNameInput(time.Now()))
+}
+
+// FileNameInput returns the values a FileNameLayout draws from this file,
+// as of the instant now. It is exported so a caller can render the same
+// name through a layout of its own — reserving the name before the file is
+// built, say — without restating where each value comes from.
+func (f *File) FileNameInput(now time.Time) FileNameInput {
+	return FileNameInput{
+		AgreementCode: f.config.Company.Agreement,
+		Branch:        f.config.Account.Branch,
+		AccountNumber: f.config.Account.Number,
+		LayoutName:    f.engine.LayoutName(),
+		LayoutVersion: f.engine.LayoutVersion(),
+		NSA:           f.config.NSA,
+		Now:           now,
+		Values:        f.config.FileNameValues,
+	}
 }
 
 // Generate renders the complete CNAB 240 file content: the file header,
