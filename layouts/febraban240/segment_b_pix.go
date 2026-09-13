@@ -24,7 +24,7 @@ var segmentBPixSpec = layout.RecordSpec{
 		alphaFiller(33, 62),
 		alphaFiller(63, 127),
 		alpha("PixKeyValue", 128, 226, layout.KeyPixKeyValue),
-		alphaFiller(227, 232),
-		alphaFiller(233, 240),
+		numericFiller(227, 232), // "uso exclusivo para o SIAPE" in some bank manuals
+		numericFiller(233, 240), // "código ISPB" in some bank manuals
 	},
 }
