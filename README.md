@@ -26,6 +26,7 @@ Veja [ARQUITETURA.md](ARQUITETURA.md) para o detalhamento das três camadas e [N
 - **Conversão de linha digitável** de boleto (47 dígitos) ou de conta/tributo (48 dígitos) em código de barras de 44 dígitos, com conferência dos dígitos verificadores (`ConvertToBarcode`).
 - **CNPJ alfanumérico** da Receita Federal aceito em qualquer campo de documento, além do formato histórico todo numérico.
 - **Layouts plugáveis**: registrados por nome em `init()`, informados diretamente em tempo de execução (`Config.LayoutSpec`) ou carregados de um arquivo JSON (`layout.NewFromJSON`).
+- **Nome do arquivo de remessa configurável** por convenção de banco, por arquivo (`Config.FileNameLayout`) ou global (`SetRemittanceFileNameLayout`).
 - **Valores monetários sempre inteiros** em centavos (`cnab.Cents`), nunca `float64`.
 - **Erros tipados** (`ValidationError`, `FieldError`, `LimitExceededError`, `ReturnParseError`, entre outros), identificáveis com `errors.As`.
 - **Zero dependências** além da biblioteca padrão.

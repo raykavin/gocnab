@@ -25,4 +25,16 @@ type Config struct {
 	// the file header (e.g. "01600" or "06250"). Optional: a Layout that
 	// doesn't bind layout.KeyFileDensity simply never reads this field.
 	FileDensity int
+	// FileNameLayout is the file name convention File.FileName renders for
+	// this file, overriding the process wide default installed by
+	// SetRemittanceFileNameLayout. Set it (rather than the global) whenever
+	// one process generates files for more than one bank, since each bank
+	// names its files differently and the global has room for only one
+	// convention. Left zero, the global applies; with no global either,
+	// File.FileName keeps its historical "<LAYOUT>_<NSA>_<YYYYMMDD>.REM".
+	FileNameLayout FileNameLayout
+	// FileNameValues supplies the values this file's FileNameLayout draws
+	// its Custom fields from, keyed by the name each Custom field was
+	// created with. Optional: a layout with no Custom field never reads it.
+	FileNameValues map[string]string
 }
