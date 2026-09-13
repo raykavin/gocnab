@@ -31,7 +31,7 @@ var batchHeaderSpec = layout.RecordSpec{
 		alphaFiller(178, 192),
 		alphaFiller(193, 212),
 		numericFiller(213, 217),
-		numericFiller(218, 220),
+		alphaFiller(218, 220),
 		alphaFiller(221, 222),
 		alphaFiller(223, 230),
 		alphaFiller(231, 240),
