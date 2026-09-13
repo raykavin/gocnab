@@ -57,7 +57,7 @@ var (
 	// ("Liquidação de Títulos do Próprio Banco"). Use OtherBankBoletoService
 	// instead for a boleto issued by a different bank: some banks (e.g.
 	// Sicredi) reject a boleto batch that uses the wrong one of the two,
-	// even though BoletoPayment itself renders identically either way —
+	// even though BoletoPayment itself renders identically either way
 	// only the batch's service code differs; which one to use depends on
 	// which bank issued the boleto being paid, not on any property of the
 	// payment.
@@ -67,9 +67,30 @@ var (
 	// Bancos"). See BoletoService.
 	OtherBankBoletoService = BatchService{code: "31", name: "other_bank_boleto_payment"}
 	// BarcodeTaxService settles payments as utility bill / barcoded tax
-	// payments.
-	BarcodeTaxService = BatchService{code: "22", name: "barcode_tax_payment"}
-	// TaxWithoutBarcodeService settles payments as DARF/GPS tax payments
-	// without a barcode.
-	TaxWithoutBarcodeService = BatchService{code: "17", name: "tax_without_barcode_payment"}
+	// payments (Segmento O).
+	//
+	// The code is "11" — "Pagamento de Contas e Tributos com Código de
+	// Barras" — and not "22", which is the code of the TaxPayment *product*
+	// this service is normally paired with. Repeating the product code here
+	// is what made Sicredi reject a whole arrecadação file with
+	// "tipo de arquivo inválido": the forma de lançamento is how the bank
+	// decides which segment to read, and 22 addresses no segment at all.
+	BarcodeTaxService = BatchService{code: "11", name: "barcode_tax_payment"}
+	// The three services below settle tax payments that carry no barcode.
+	// They are deliberately separate constants rather than one
+	// "tax without barcode" value: each names a different tribute, each
+	// carries a different Segmento N variant, and the bank reads the code
+	// to know which of the three to expect. One constant covering all of
+	// them can only ever be right for one — it was "17", so a DARF batch
+	// announced itself as GPS.
+	//
+	// DARFService settles a normal DARF ("Tributo DARF Normal"), carried as
+	// Segmento N — pair it with the DARF payment type.
+	DARFService = BatchService{code: "16", name: "darf_payment"}
+	// GPSService settles a GPS ("Guia da Previdência Social"), carried as
+	// Segmento N2 — pair it with the GPS payment type.
+	GPSService = BatchService{code: "17", name: "gps_payment"}
+	// DARFSimpleService settles a simplified DARF ("Tributo DARF Simples"),
+	// carried as Segmento N3 — pair it with the DARFSimple payment type.
+	DARFSimpleService = BatchService{code: "18", name: "darf_simple_payment"}
 )
