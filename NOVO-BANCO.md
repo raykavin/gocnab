@@ -21,7 +21,7 @@ Copie a estrutura de `layouts/febraban240` e ajuste. A maioria dos bancos segue 
 
 ## Passo 2: extraia as tabelas de posição do manual
 
-Para cada tipo de registro que seu banco suporta (header de arquivo, header de lote, segmentos A/B/J/J-52/O/N, trailer de lote, trailer de arquivo), monte uma tabela com: posição inicial, posição final, tamanho, tipo (`9` numérico ou `X` alfanumérico), casas decimais implícitas (se houver) e conteúdo (fixo ou variável). A maioria dos manuais de banco já apresenta essa tabela prontamente; o trabalho é conferir se a numeração de colunas é 1-based (geralmente é) e se não há lacunas.
+Para cada tipo de registro que seu banco suporta (header de arquivo, header de lote, segmentos A/B/J/J-52/O/N/Z, trailer de lote, trailer de arquivo), monte uma tabela com: posição inicial, posição final, tamanho, tipo (`9` numérico, `X` alfanumérico ou `D` para CPF/CNPJ), casas decimais implícitas (se houver) e conteúdo (fixo ou variável). A maioria dos manuais de banco já apresenta essa tabela prontamente; o trabalho é conferir se a numeração de colunas é 1-based (geralmente é) e se não há lacunas.
 
 Confira que a soma dos tamanhos de cada registro é exatamente 240. Se não for, há um campo com posição errada ou um trecho "de uso exclusivo FEBRABAN/CNAB" que faltou modelar como preenchimento (filler).
 
@@ -31,14 +31,20 @@ Cada linha da tabela do passo 2 se torna um `layout.FieldSpec`:
 
 ```go
 layout.FieldSpec{
-    Name:  "PaymentAmount",       // identificador em inglês, para mensagens de erro
-    Start: 120,
-    End:   134,
-    Kind:  layout.KindNumeric,
-    Decimals: 2,                   // só relevante para valores fora de Cents
-    Key:   layout.KeyAmount,       // OU Const, nunca os dois
+    Name:     "PaymentAmount",    // identificador em inglês, para mensagens de erro
+    Start:    120,
+    End:      134,
+    Kind:     layout.KindNumeric,
+    Decimals: 2,                  // só relevante para valores fora de Cents
+    Key:      layout.KeyAmount,   // OU Const, nunca os dois
 }
 ```
+
+São três espécies de campo:
+
+- `layout.KindNumeric` (`9`): alinhado à direita, zero à esquerda.
+- `layout.KindAlphanumeric` (`X`): maiúsculo, alinhado à esquerda, espaço à direita. Marque `Lowercase: true` só quando o manual exigir minúsculas naquele campo específico, como acontece com a chave PIX de e-mail em alguns bancos.
+- `layout.KindDocument` (`D`): use em todo campo que carrega CPF/CNPJ. Renderiza igual a `KindNumeric` para um valor só de dígitos, mas também aceita um CNPJ alfanumérico da Receita Federal, que um campo numérico recusaria. Não use em campo genuinamente numérico (valor, data, sequencial), onde um valor não numérico ainda deve dar erro.
 
 Duas regras:
 
@@ -58,7 +64,7 @@ var segmentASpec = layout.RecordSpec{
 }
 ```
 
-As funções auxiliares `numeric`, `numericConst`, `numericDecimal`, `alpha`, `alphaConst`, `numericFiller` e `alphaFiller` usadas em `layouts/febraban240` são só literais de `FieldSpec`; copie o padrão para o seu próprio pacote (ou importe as equivalentes, se preferir manter um único conjunto compartilhado).
+As funções auxiliares `numeric`, `numericConst`, `numericDecimal`, `document`, `alpha`, `alphaConst`, `numericFiller` e `alphaFiller` usadas em `layouts/febraban240` são só literais de `FieldSpec`; copie o padrão para o seu próprio pacote (ou importe as equivalentes, se preferir manter um único conjunto compartilhado).
 
 ## Passo 4: implemente o tipo `Layout`
 
@@ -94,9 +100,11 @@ func init() {
 
 Se o seu banco não suportar algum segmento (por exemplo, não processa GPS), simplesmente não inclua aquele `case`; o valor de retorno `ok=false` já faz o SDK rejeitar, em `Batch.AddPayment`, qualquer tipo de pagamento que precise daquele segmento, com uma mensagem de erro clara.
 
-## Passo 5: decida sobre `SegmentB`/`SegmentBPix` e `SegmentN`/variações
+## Passo 5: decida sobre `SegmentB`/`SegmentBPix`, `SegmentN`/variações e `SegmentZ`
 
 Se o manual do seu banco documenta conteúdo diferente para o Segmento B em pagamentos comuns versus PIX (ou para o Segmento N em DARF/DARF Simples/GPS), implemente cada `RecordKey` correspondente separadamente, com posições fiéis ao manual de cada caso. Se o seu banco não suporta PIX ainda, basta não implementar `SegmentBPix`.
+
+`SegmentZ` só aparece em arquivo de retorno: nenhum tipo de pagamento o produz em uma remessa. Implemente-o se o seu banco envia autenticação de pagamento nesse segmento e você quer que `cnab.ParseReturn` preencha `ReturnMovement.Authentication` e `ReturnMovement.BankControl`; sem ele, os dois campos ficam vazios e o segmento é ignorado na leitura. O layout de referência `febraban240` não o implementa, porque o padrão FEBRABAN puro não fixa o conteúdo dele.
 
 ## Passo 6: registre o pacote e use
 
@@ -114,13 +122,15 @@ file, err := cnab.NewRemittance(cnab.Config{
 })
 ```
 
+Quando o layout não é uma constante do binário, e sim um dado resolvido em tempo de execução (carregado de um banco de dados ou escolhido por cliente), pule o registro e passe a instância direto em `Config.LayoutSpec`; na leitura de retorno, o equivalente é `cnab.ParseReturnWithLayout`.
+
 ## Passo 7: teste o layout
 
 No mínimo, replique os testes de `layouts/febraban240/febraban240_test.go`:
 
 1. O layout se autorregistra (`layout.Lookup("meubanco240")` retorna `ok=true`).
-2. Cada `RecordSpec` que o layout expõe soma exatamente 240 colunas.
-3. `internal/engine.New(meubanco{})` não retorna erro (isso confere, adicionalmente, que não há sobreposição nem lacuna em nenhum registro, uma verificação mais forte que só somar tamanhos).
+2. Cada `RecordSpec` que o layout expõe passa em `RecordSpec.Validate()`, que confere a cobertura de 1 a 240 sem lacuna nem sobreposição, uma verificação mais forte do que só somar tamanhos.
+3. `cnab.NewRemittance` com o seu layout não retorna erro: ele roda a mesma validação eager do motor sobre o layout inteiro. O pacote `internal/engine` não é importável de fora do módulo, então este é o caminho para um layout mantido em outro repositório (o teste de `layouts/febraban240`, por estar dentro deste módulo, chama `engine.New` diretamente).
 
 Depois disso, gere um arquivo de exemplo completo (um `File` com pelo menos um lote e um pagamento de cada tipo que seu banco suporta) e compare visualmente as posições de campos fixos e conhecidos (código do banco, tipo de registro, código de segmento) com um arquivo de remessa real do seu banco, se tiver um à mão. Esse é o jeito mais rápido de pegar um deslocamento de coluna errado.
 
@@ -133,7 +143,7 @@ func NewFromJSON(data []byte) (layout.Layout, error)
 func NewFromJSONFile(path string) (layout.Layout, error)
 ```
 
-O JSON usa exatamente o mesmo vocabulário dos passos anteriores: as chaves do objeto `records` são os valores de `RecordKey` (`"file_header"`, `"segment_a"`, etc.), e cada campo é um `FieldSpec` com `start`/`end`/`kind` (`"9"` ou `"X"`, também aceita `"numeric"`/`"alphanumeric"`) e `key` ou `const` (nunca os dois). Exemplo mínimo:
+O JSON usa exatamente o mesmo vocabulário dos passos anteriores: as chaves do objeto `records` são os valores de `RecordKey` (`"file_header"`, `"segment_a"`, etc.), e cada campo é um `FieldSpec` com `start`/`end`/`kind` (`"9"`, `"X"` ou `"D"`, também aceitos por extenso como `"numeric"`, `"alphanumeric"` e `"document"`) e `key` ou `const` (nunca os dois). Um campo alfanumérico pode ainda trazer `"lowercase": true`. Exemplo mínimo:
 
 ```json
 {
@@ -167,10 +177,12 @@ cnab.RegisterLayout("meubanco240", l)
 - `name` e `version` são obrigatórios.
 - toda chave de `records` precisa ser um `RecordKey` conhecido (a mensagem de erro lista os valores válidos).
 - todo `key` de campo precisa ser uma chave conhecida do vocabulário (`cnab/layout/value.go`); um nome de chave digitado errado é rejeitado na hora, com o registro e o número do campo que causou o erro.
+- todo `kind` precisa ser `"9"`/`"numeric"`, `"X"`/`"alphanumeric"` ou `"D"`/`"document"`.
+- toda faixa de colunas precisa satisfazer `1 <= start <= end <= 240`.
 - um campo nunca pode ter `key` e `const` ao mesmo tempo.
 - cada registro precisa cobrir as colunas 1 a 240 sem lacuna nem sobreposição (a mesma verificação que `RecordSpec.Validate()` e o motor fazem).
 
-Só oferecemos JSON, não YAML: a biblioteca padrão do Go tem `encoding/json`, então o carregador de JSON não adiciona nenhuma dependência externa ao projeto; um carregador de YAML exigiria uma dependência externa (não existe parser de YAML na stdlib), o que contraria a decisão de design registrada em `ARQUITETURA.md`. Se seu banco só é descrito em YAML, converta para JSON antes (ou peça para reavaliarmos essa decisão caso o time realmente precise editar YAML diretamente).
+Só há carregador de JSON, não de YAML: a biblioteca padrão do Go traz `encoding/json`, então o carregador não adiciona nenhuma dependência externa ao projeto, enquanto um de YAML exigiria uma (não existe parser de YAML na stdlib), contrariando a decisão de design registrada em `ARQUITETURA.md`. Se o seu layout só existe em YAML, converta para JSON antes de carregá-lo.
 
 O JSON é uma via alternativa para o **mesmo** `RecordSpec`/`FieldSpec` dos passos 3 e 4, não um formato paralelo: qualquer coisa que você conseguiria expressar em Go, consegue expressar em JSON, e vice-versa. Escolha Go quando quiser checagem em tempo de compilação e o layout for versionado junto do código; escolha JSON quando quiser carregar/trocar o layout sem recompilar.
 

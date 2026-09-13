@@ -18,13 +18,28 @@ O SDK separa três camadas independentes:
 
 Veja [ARQUITETURA.md](ARQUITETURA.md) para o detalhamento das três camadas e [NOVO-BANCO.md](NOVO-BANCO.md) para o passo a passo de como derivar o layout de um banco real a partir de `febraban240`. A referência completa de tipos, funções e constantes exportados está em [API.md](API.md).
 
+## Funcionalidades
+
+- **Remessa CNAB 240** com múltiplos lotes, sequenciais e trailers calculados pelo próprio motor.
+- **Tipos de pagamento**: crédito em conta, TED, PIX por chave, PIX por dados bancários, boleto, conta/tributo com código de barras, DARF, DARF Simples, GPS e cancelamento de um pagamento já enviado.
+- **Leitura de arquivo de retorno** (`ParseReturn`), com um movimento por Segmento A, J ou O e dados de autenticação do Segmento Z quando o layout do banco o implementa.
+- **Conversão de linha digitável** de boleto (47 dígitos) ou de conta/tributo (48 dígitos) em código de barras de 44 dígitos, com conferência dos dígitos verificadores (`ConvertToBarcode`).
+- **CNPJ alfanumérico** da Receita Federal aceito em qualquer campo de documento, além do formato histórico todo numérico.
+- **Layouts plugáveis**: registrados por nome em `init()`, informados diretamente em tempo de execução (`Config.LayoutSpec`) ou carregados de um arquivo JSON (`layout.NewFromJSON`).
+- **Valores monetários sempre inteiros** em centavos (`cnab.Cents`), nunca `float64`.
+- **Erros tipados** (`ValidationError`, `FieldError`, `LimitExceededError`, `ReturnParseError`, entre outros), identificáveis com `errors.As`.
+- **Zero dependências** além da biblioteca padrão.
+
+## Requisitos
+
+- Go 1.26 ou superior.
+- Nenhuma dependência externa.
+
 ## Instalação
 
 ```bash
 go get github.com/raykavin/gocnab
 ```
-
-Requer Go 1.26 ou superior. Nenhuma dependência externa além da biblioteca padrão.
 
 ## Exemplo mínimo
 
@@ -86,10 +101,32 @@ func main() {
 
 Valores monetários são sempre inteiros em centavos (`cnab.Cents`), nunca `float64`. Datas usam `time.Time`. Erros são tipados (`cnab.ValidationError`, `cnab.LimitExceededError`, `cnab.FieldError`, entre outros) e descritivos.
 
+O par produto/serviço do lote (`cnab.SupplierPayment`, `cnab.PixTransfer`, ...) depende do manual do seu banco: alguns exigem produtos próprios para boleto (`cnab.BoletoCollection`) e para tributos (`cnab.TaxPayment`) em vez de aninhá-los em `cnab.SupplierPayment`.
+
+## Código de barras e linha digitável
+
+`BoletoPayment` e `BarcodeTax` recebem o código de barras de 44 dígitos. Quando a entrada é a linha digitável, `ConvertToBarcode` normaliza os dois formatos e ainda diz para qual dos dois tipos de pagamento o resultado serve:
+
+```go
+segment, barcode, err := cnab.ConvertToBarcode("34190.10438 51004.791029 01500.080005 1 91820000023000")
+if err != nil {
+	log.Fatal(err) // dígito verificador não confere, tamanho inválido, caractere inesperado
+}
+
+switch segment {
+case cnab.SegmentBankSlip:
+	err = batch.AddPayment(cnab.BoletoPayment{Barcode: barcode /* ... */})
+case cnab.SegmentFeesOrTaxes:
+	err = batch.AddPayment(cnab.BarcodeTax{Barcode: barcode /* ... */})
+}
+```
+
+Todos os dígitos verificadores FEBRABAN são conferidos antes do retorno, então uma linha digitada errada é recusada aqui em vez de virar um código de barras plausível mas errado.
+
 ## Processando retorno
 
 ```go
-content, err := os.ReadFile("retorno_sicredi_20260105.ret")
+content, err := os.ReadFile("retorno_20260105.ret")
 if err != nil {
 	log.Fatal(err)
 }
@@ -108,7 +145,19 @@ for _, m := range result.Movements {
 }
 ```
 
-`ParseReturn` decodifica o Segmento A de cada movimento (o "seu número" enviado na remessa, valor, data e valor real de liquidação, códigos de ocorrência/rejeição) o suficiente para reconciliar um pagamento. Os demais segmentos (B, BPix, J, ...) são ignorados; veja "Processando retorno" em [ARQUITETURA.md](ARQUITETURA.md) para o motivo. A tabela de códigos de ocorrência é específica de cada banco confirme com o manual dele antes de interpretar um código.
+`ParseReturn` gera um movimento por segmento principal encontrado: Segmento A (crédito em conta, TED, PIX), Segmento J (boleto) e Segmento O (conta/tributo com código de barras). De cada um extrai o "seu número" enviado na remessa, o valor instruído, a data e o valor reais de liquidação e os códigos de ocorrência/rejeição, o suficiente para reconciliar um pagamento. Um Segmento Z posterior preenche os dados de autenticação do movimento, quando o layout do banco o implementa. Os segmentos complementares (B, BPix, J-52) e o Segmento N são ignorados; veja "Processando retorno" em [ARQUITETURA.md](ARQUITETURA.md) para o motivo.
+
+A tabela de códigos de ocorrência é específica de cada banco: confirme com o manual dele antes de interpretar um código.
+
+## Layouts de banco
+
+O layout `febraban240` é o padrão FEBRABAN puro e já vem registrado; ele não representa nenhum banco real (o código de compensação é um `"000"` de referência). Há três formas de usar o layout de um banco:
+
+- **Registro por nome**, o caminho usual para um layout que é constante do binário: o pacote do banco chama `layout.Register` no seu `init()` e o chamador informa o nome em `Config.Layout`.
+- **Instância direta**, para um layout que é dado resolvido em tempo de execução: preencha `Config.LayoutSpec` (e use `ParseReturnWithLayout` na leitura de retorno).
+- **Descritor JSON**, para trocar o layout sem recompilar: `layout.NewFromJSON`/`layout.NewFromJSONFile`, com validação completa já no carregamento.
+
+O passo a passo para derivar o layout de um banco real a partir do manual dele está em [NOVO-BANCO.md](NOVO-BANCO.md).
 
 ## Exemplos completos
 
@@ -134,11 +183,15 @@ Cada exemplo roda isoladamente, por exemplo:
 go run ./examples/pix_key
 ```
 
-## Documentação
+## Estrutura do projeto
 
-- [ARQUITETURA.md](ARQUITETURA.md): as três camadas do SDK e as decisões de design.
-- [API.md](API.md): referência completa da API pública.
-- [NOVO-BANCO.md](NOVO-BANCO.md): passo a passo para implementar o descritor de um banco real a partir do manual CNAB dele.
+```
+cnab/              API pública de domínio: Config, File, Batch, tipos de pagamento, retorno
+cnab/layout/       contrato de layout: Layout, FieldSpec, RecordSpec, vocabulário de Key, registro, carregador JSON
+internal/engine/   motor genérico: campos, registros de 240 colunas, sequenciais, trailers, limites
+layouts/febraban240/  layout de referência do padrão FEBRABAN puro
+examples/          programas executáveis, um por cenário
+```
 
 ## Testes
 
@@ -147,6 +200,20 @@ go test ./... -cover
 ```
 
 O pacote `internal/engine` (o motor genérico) mantém cobertura de testes acima de 85%.
+
+## Comandos úteis
+
+```bash
+go build ./...         # compila todos os pacotes
+go vet ./...           # análise estática
+go run ./examples/ted  # executa um exemplo
+```
+
+## Documentação
+
+- [ARQUITETURA.md](ARQUITETURA.md): as três camadas do SDK e as decisões de design.
+- [API.md](API.md): referência completa da API pública.
+- [NOVO-BANCO.md](NOVO-BANCO.md): passo a passo para implementar o descritor de um banco real a partir do manual CNAB dele.
 
 ---
 

@@ -13,6 +13,7 @@ Convenções usadas neste documento: valores monetários são sempre `cnab.Cents
 - [Produtos e serviços de lote](#produtos-e-serviços-de-lote)
 - [Tipos de pagamento](#tipos-de-pagamento)
 - [PIX](#pix)
+- [Código de barras e linha digitável](#código-de-barras-e-linha-digitável)
 - [Processando retorno](#processando-retorno)
 - [Registro de layouts](#registro-de-layouts)
 - [Erros](#erros)
@@ -26,19 +27,23 @@ Convenções usadas neste documento: valores monetários são sempre `cnab.Cents
 
 ```go
 type Config struct {
-    Layout  string
-    Company Company
-    Account Account
-    NSA     int
+    Layout      string
+    LayoutSpec  Layout
+    Company     Company
+    Account     Account
+    NSA         int
+    FileDensity int
 }
 ```
 
 Agrupa tudo que `NewRemittance` precisa para iniciar um arquivo de remessa.
 
-- `Layout`: nome de um layout já registrado, por exemplo `"febraban240"`.
+- `Layout`: nome de um layout já registrado, por exemplo `"febraban240"`. Ignorado quando `LayoutSpec` está preenchido.
+- `LayoutSpec`: uma instância de `Layout` usada diretamente, sem passar pelo registro por nome. Use quando o layout não for uma constante do processo, e sim um dado resolvido em tempo de execução (carregado de um banco de dados, por exemplo): `layout.Register` é single-shot por nome e mantém as entradas pelo resto da vida do processo. Quando os dois estão preenchidos, `LayoutSpec` prevalece.
 - `Company`: a empresa pagadora, que envia o arquivo.
 - `Account`: a conta bancária de onde saem os pagamentos do arquivo.
 - `NSA`: número sequencial do arquivo, positivo, controlado pelo chamador entre os arquivos que ele envia a um mesmo banco.
+- `FileDensity`: densidade de gravação que alguns manuais exigem no header de arquivo (por exemplo `1600` ou `6250`). Opcional: um `Layout` que não amarra `layout.KeyFileDensity` simplesmente nunca lê este campo.
 
 ### `type Company`
 
@@ -58,15 +63,18 @@ Validação (em `NewRemittance`): `Name` e `Agreement` não podem ser vazios; `R
 
 ```go
 type Account struct {
-    Branch     string
-    Number     string
-    CheckDigit string
+    Branch           string
+    Number           string
+    CheckDigit       string
+    BranchCheckDigit string
 }
 ```
 
 Identifica uma conta bancária: agência, número da conta (sem o dígito) e o dígito verificador. Usada tanto para a conta da empresa (em `Config`) quanto para a conta do favorecido (embutida em `CreditAccount`, `TED` e `PixBankData`).
 
-Validação: os três campos são obrigatórios. Erro: `*ValidationError{Context: "Account", ...}`.
+`BranchCheckDigit` é o dígito verificador da própria agência, diferente de `CheckDigit` (o dígito da conta). É opcional: alguns manuais o exigem, outros o deixam em branco, e um `Layout` que não amarra `layout.KeyBranchCheckDigit` nunca lê este campo.
+
+Validação: `Branch`, `Number` e `CheckDigit` são obrigatórios. Erro: `*ValidationError{Context: "Account", ...}`.
 
 ### `type Payee`
 
@@ -94,8 +102,8 @@ payee := cnab.Payee{Name: "COLABORADOR X", Registration: registration}
 
 ```go
 type Document interface {
-    Digits() string // 11 (CPF) ou 14 (CNPJ) dígitos, sem pontuação
-    Kind() string    // "CPF" ou "CNPJ"
+    Digits() string // 11 (CPF) ou 14 (CNPJ) caracteres, sem pontuação
+    Kind() string   // "CPF" ou "CNPJ"
 }
 ```
 
@@ -110,7 +118,9 @@ func (c CNPJ) Digits() string
 func (c CNPJ) Kind() string // "CNPJ"
 ```
 
-`NewCNPJ` remove pontuação de `raw` automaticamente e valida: precisa ter 14 dígitos, não pode ser uma sequência de 14 dígitos repetidos, e precisa passar no algoritmo padrão de dígito verificador módulo 11.
+`NewCNPJ` remove pontuação de `raw` automaticamente e valida: precisa ter 14 caracteres, não pode ser uma sequência de 14 caracteres repetidos, e precisa passar no algoritmo padrão de dígito verificador módulo 11.
+
+Aceita tanto o formato histórico, todo numérico, quanto o **CNPJ alfanumérico** da Receita Federal (12 caracteres alfanuméricos de raiz e ordem, letras maiúsculas ou dígitos, seguidos de 2 dígitos verificadores numéricos). O valor nunca é reduzido a um tipo numérico, então um CNPJ alfanumérico válido é preservado exatamente como emitido. Do lado do layout, um campo que carrega CPF/CNPJ deve ser declarado como `layout.KindDocument` para aceitar essa forma (veja o pacote `cnab/layout`).
 
 **Erros:** `*ValidationError{Context: "CNPJ", ...}` descrevendo exatamente o motivo (tamanho errado ou dígito verificador inválido).
 
@@ -163,8 +173,9 @@ func NewRemittance(cfg Config) (*File, error)
 
 - `Company`/`Account` inválidos: `*ValidationError`.
 - `NSA <= 0`: `*ValidationError{Context: "Config", Reason: "NSA must be greater than zero"}`.
-- `Layout` vazio: `*ValidationError`.
+- `Layout` vazio e `LayoutSpec` não informado: `*ValidationError`.
 - `Layout` não registrado: `*ValidationError` listando os layouts disponíveis.
+- `LayoutSpec` malformado (versão vazia, registro que não cobre as 240 colunas): `*ValidationError`/`*FieldError`, já traduzidos do motor.
 
 **Exemplo:** veja a seção "Exemplo mínimo" no `README.md`.
 
@@ -227,26 +238,33 @@ Valida `p` e o adiciona ao lote como um novo movimento. A validação cobre todo
 Identifica o tipo de serviço de um lote (a "modalidade" FEBRABAN, sem campos exportados; use sempre uma constante predefinida):
 
 ```go
-var SupplierPayment = BatchProduct{...} // Pagamento a Fornecedores
-var PayrollPayment  = BatchProduct{...} // Pagamento de Salários
+var SupplierPayment  = BatchProduct{...} // "20", Pagamento a Fornecedores
+var PayrollPayment   = BatchProduct{...} // "30", Pagamento de Salários
+var BoletoCollection = BatchProduct{...} // "03", Boleto Eletrônico / cobrança
+var TaxPayment       = BatchProduct{...} // "22", Pagamento de Contas, Tributos e Impostos
 ```
 
 `func (p BatchProduct) String() string` retorna um nome descritivo.
+
+Alguns bancos (por exemplo o Sicredi) exigem que pagamento de boleto e pagamento de conta/tributo usem os produtos próprios (`BoletoCollection` e `TaxPayment`) em vez de ficarem sob `SupplierPayment`, mesmo quando o destinatário final também é um fornecedor. Confirme no manual do seu banco antes de assumir que `SupplierPayment` cobre todas as formas de pagamento.
 
 ### `type BatchService`
 
 Identifica a forma de lançamento de um lote (sem campos exportados; use sempre uma constante predefinida):
 
 ```go
-var CreditInAccount        = BatchService{...} // crédito em conta, mesmo banco
-var TEDTransfer            = BatchService{...} // TED
-var PixTransfer            = BatchService{...} // PIX (por chave ou por dados bancários)
-var BoletoService          = BatchService{...} // pagamento de boletos
-var BarcodeTaxService      = BatchService{...} // conta/tributo com código de barras
-var TaxWithoutBarcodeService = BatchService{...} // DARF/GPS sem código de barras
+var CreditInAccount          = BatchService{...} // "01", crédito em conta, mesmo banco
+var TEDTransfer              = BatchService{...} // "41", TED
+var PixTransfer              = BatchService{...} // "45", PIX (por chave ou por dados bancários)
+var BoletoService            = BatchService{...} // "30", boleto do próprio banco
+var OtherBankBoletoService   = BatchService{...} // "31", boleto de outros bancos
+var BarcodeTaxService        = BatchService{...} // "22", conta/tributo com código de barras
+var TaxWithoutBarcodeService = BatchService{...} // "17", DARF/GPS sem código de barras
 ```
 
 `func (s BatchService) String() string` retorna um nome descritivo.
+
+`BoletoService` e `OtherBankBoletoService` rendem exatamente o mesmo Segmento J; o que muda é só o código de forma de lançamento do lote. A escolha depende de qual banco emitiu o boleto que está sendo pago, não de nenhuma propriedade do `BoletoPayment`, e alguns bancos rejeitam o lote que usa o código errado.
 
 ---
 
@@ -254,19 +272,33 @@ var TaxWithoutBarcodeService = BatchService{...} // DARF/GPS sem código de barr
 
 Todos implementam a interface `Payment` (métodos não exportados, interface fechada: só os tipos deste pacote a implementam). Nenhum é instanciado por `New...`; são structs literais mesmo, com validação acontecendo em `Batch.AddPayment`.
 
+Internamente cada tipo se converte em uma sequência de `DetailSegment`:
+
+```go
+type DetailSegment struct {
+    Key    layout.RecordKey
+    Values layout.Values
+}
+```
+
+Cada `DetailSegment` é uma linha de 240 caracteres que o pagamento contribui, na ordem em que precisam aparecer no arquivo. O tipo é exportado por fazer parte da fronteira com o pacote `cnab/layout`, mas quem só usa o SDK nunca precisa construir um.
+
 ### `type CreditAccount`
 
 ```go
 type CreditAccount struct {
     Payee      Payee
     Account    Account // conta do favorecido, no mesmo banco do arquivo
+    BankCode   string  // código COMPE do banco do favorecido
     Amount     Cents
     Date       time.Time
     YourNumber string // opcional, "seu número"
 }
 ```
 
-Crédito em conta corrente no mesmo banco (Segmentos A e B). **Validação:** `Payee` e `Account` válidos, `Amount > 0`, `Date` presente e não retroativa.
+Crédito em conta corrente no mesmo banco (Segmentos A e B). `BankCode` é escrito no campo de banco do favorecido do Segmento A; para um crédito no mesmo banco é o próprio banco de destino do arquivo. Deixado vazio, o campo renderiza zeros, o que alguns bancos recusam ("código do banco favorecido inválido") mesmo quando o crédito não sai deles.
+
+**Validação:** `Payee` e `Account` válidos, `Amount > 0`, `Date` presente e não retroativa.
 
 ### `type TED`
 
@@ -301,7 +333,7 @@ Confirme a tabela exata de códigos com o seu banco antes de depender de um cód
 
 ```go
 type BoletoPayment struct {
-    Barcode        string // código de barras de 44 dígitos
+    Barcode        string // código de barras de 44 dígitos (veja ConvertToBarcode)
     Assignor       Payee  // cedente
     Payer          Payee  // sacado (normalmente a própria empresa)
     DueDate        time.Time
@@ -320,7 +352,7 @@ Pagamento de boleto (Segmentos J e J-52). **Validação:** `Barcode` com 44 díg
 
 ```go
 type BarcodeTax struct {
-    Barcode    string // 44 dígitos
+    Barcode    string // 44 dígitos (veja ConvertToBarcode)
     DueDate    time.Time
     Amount     Cents
     Date       time.Time
@@ -462,16 +494,79 @@ Identifica qual variante de `PixKey` está em uso. É o tipo de retorno do méto
 
 ```go
 type PixBankData struct {
-    Payee      Payee
-    BankCode   string // COMPE ou ISPB do banco do favorecido
-    Account    Account
-    Amount     Cents
-    Date       time.Time
-    YourNumber string
+    Payee       Payee
+    BankCode    string // código COMPE do banco do favorecido
+    ISPB        string // código ISPB do banco do favorecido, 8 dígitos
+    AccountKind PixBankAccountKind
+    Account     Account
+    Amount      Cents
+    Date        time.Time
+    YourNumber  string
 }
 ```
 
-Transferência PIX endereçada pelos dados bancários do favorecido em vez de uma chave (Segmentos A e B). **Validação:** `Payee` e `Account` válidos, `BankCode` obrigatório, `Amount > 0`, `Date` não retroativa.
+Transferência PIX endereçada pelos dados bancários do favorecido em vez de uma chave (Segmentos A e B-Pix).
+
+`ISPB` e `AccountKind` são exigidos por alguns bancos (por exemplo o Sicredi) junto com `BankCode`. Os dois são empacotados com o documento do favorecido no campo que o layout ativo amarrar a `layout.KeySupplementaryInfo`, no Segmento A ou no Segmento B-Pix. Deixados vazios, renderizam como zeros nesse campo, e um `Layout` que não precisa deles simplesmente os ignora.
+
+**Validação:** `Payee` e `Account` válidos, `BankCode` obrigatório, `Amount > 0`, `Date` não retroativa.
+
+#### `type PixBankAccountKind`
+
+```go
+type PixBankAccountKind string
+const (
+    PixBankAccountChecking PixBankAccountKind = "01" // conta corrente
+    PixBankAccountPayment  PixBankAccountKind = "02" // conta de pagamento
+    PixBankAccountSavings  PixBankAccountKind = "03" // conta poupança
+)
+```
+
+Identifica o tipo de conta que um `PixBankData` credita. O valor zero renderiza como `"00"` onde o layout esperar um desses códigos.
+
+---
+
+## Código de barras e linha digitável
+
+### `func ConvertToBarcode`
+
+```go
+func ConvertToBarcode(raw string) (BarcodeSegment, string, error)
+```
+
+Normaliza a linha digitável de um boleto (47 dígitos) ou de uma conta/tributo (48 dígitos) para o código de barras de 44 dígitos que `BoletoPayment.Barcode` e `BarcodeTax.Barcode` esperam, e informa a qual dos dois segmentos o resultado pertence. Um valor que já tem 44 dígitos é aceito como está e apenas classificado. Os separadores convencionais `.`, `-` e espaço são tolerados na entrada.
+
+Todos os caminhos validam os dígitos verificadores FEBRABAN antes de retornar: uma linha digitável de 47 ou 48 dígitos tem o dígito verificador de cada um de seus campos conferido enquanto é reduzida a código de barras, e todo código de barras, digitado direto ou recém-montado, tem o seu próprio dígito verificador geral conferido contra os outros 43 dígitos. Uma entrada adulterada ou digitada errada é recusada aqui, em vez de virar silenciosamente um código de barras estruturalmente plausível mas errado.
+
+**Erros:** `*ValidationError{Context: "ConvertToBarcode", ...}` quando `raw` contém caracteres fora de dígitos e separadores, quando a quantidade de dígitos não é 44, 47 nem 48, ou quando algum dígito verificador (de campo ou geral) não confere.
+
+### `type BarcodeSegment`
+
+```go
+type BarcodeSegment int8
+const (
+    SegmentBankSlip    BarcodeSegment = iota + 1 // boleto, rende um BoletoPayment (Segmento J)
+    SegmentFeesOrTaxes                           // conta/tributo, rende um BarcodeTax (Segmento O)
+)
+```
+
+Diz em qual tipo de pagamento o código de barras normalizado deve ser usado. A decisão sai dos mesmos dígitos que `ConvertToBarcode` já precisa ler, por isso é devolvida junto.
+
+**Exemplo:**
+
+```go
+segment, barcode, err := cnab.ConvertToBarcode("34190.10438 51004.791029 01500.080005 1 91820000023000")
+if err != nil {
+    log.Fatal(err)
+}
+
+switch segment {
+case cnab.SegmentBankSlip:
+    err = batch.AddPayment(cnab.BoletoPayment{Barcode: barcode, /* ... */})
+case cnab.SegmentFeesOrTaxes:
+    err = batch.AddPayment(cnab.BarcodeTax{Barcode: barcode, /* ... */})
+}
+```
 
 ---
 
@@ -483,11 +578,19 @@ Transferência PIX endereçada pelos dados bancários do favorecido em vez de um
 func ParseReturn(layoutName string, content []byte) (*ReturnFile, error)
 ```
 
-Decodifica um arquivo de retorno CNAB 240 usando o layout registrado sob `layoutName` normalmente o mesmo layout com que a remessa correspondente foi gerada. Aceita `content` terminado em CRLF ou apenas LF, com ou sem linha vazia final.
+Decodifica um arquivo de retorno CNAB 240 usando o layout registrado sob `layoutName`, normalmente o mesmo layout com que a remessa correspondente foi gerada. Aceita `content` terminado em CRLF ou apenas LF, com ou sem linha vazia final.
 
-Decodifica somente o Segmento A de cada movimento; todo outro registro (headers/trailers de arquivo e lote, Segmentos B/BPix e qualquer outro segmento de detalhe) é ignorado. Veja "Processando retorno" em `ARQUITETURA.md` para o motivo de o Segmento A ser suficiente.
+Decodifica um movimento para cada **Segmento A** (crédito em conta, TED, PIX), **Segmento J** (boleto) e **Segmento O** (conta/tributo com código de barras) encontrado. Um Segmento J cujo campo "Código Reg. Opcional" (colunas 18-19) contém `"52"` é um registro de continuação J-52, não um movimento, e é pulado como qualquer outro segmento de continuação. Um **Segmento Z** logo após o segmento principal de um movimento preenche `Authentication`/`BankControl` daquele movimento. Todo o resto (headers/trailers de arquivo e lote, Segmentos B/BPix/J-52/N e qualquer outro segmento de detalhe) é ignorado. Veja "Processando retorno" em `ARQUITETURA.md` para o motivo de o segmento principal ser suficiente.
 
-**Erros:** `*ValidationError` se `layoutName` não estiver registrado ou se o layout em si for inválido (mesmas condições de `NewRemittance`); `*ReturnParseError` se uma linha não tiver exatamente 240 caracteres, tiver um marcador de tipo de registro desconhecido, ou (classificada como Segmento A) tiver um campo constante cujo conteúdo não bate com o que o layout espera ali.
+**Erros:** `*ValidationError` se `layoutName` não estiver registrado ou se o layout em si for inválido (mesmas condições de `NewRemittance`); `*ReturnParseError` se uma linha não tiver exatamente 240 caracteres, tiver um marcador de tipo de registro desconhecido, ou tiver um campo constante cujo conteúdo não bate com o que o layout espera ali.
+
+### `func ParseReturnWithLayout`
+
+```go
+func ParseReturnWithLayout(l Layout, content []byte) (*ReturnFile, error)
+```
+
+É o `ParseReturn` contra uma instância de `Layout` em vez de um nome registrado, para quem resolve o layout em tempo de execução (o mesmo caso de `Config.LayoutSpec`). Retorna `*ValidationError` quando `l` é `nil`.
 
 ### `type ReturnFile`
 
@@ -497,7 +600,7 @@ type ReturnFile struct {
 }
 ```
 
-Resultado estruturado de `ParseReturn`: um `ReturnMovement` por Segmento A encontrado, na ordem em que aparecem no arquivo.
+Resultado estruturado de `ParseReturn`: um `ReturnMovement` por segmento principal (A, J ou O) encontrado, na ordem em que aparecem no arquivo.
 
 ### `type ReturnMovement`
 
@@ -508,11 +611,23 @@ type ReturnMovement struct {
     SettlementDate   time.Time
     SettlementAmount Cents
     OccurrenceCodes  []string
+    Authentication   string
+    BankControl      string
 }
 func (m ReturnMovement) Accepted() bool
 ```
 
-O resultado de um pagamento, conforme reportado pelo banco. `YourNumber` é o "seu número" ecoado sem alteração desde a remessa (o mesmo valor que `AddPayment` recebeu no campo `YourNumber` do `Payment`) é o que permite casar um `ReturnMovement` de volta com um pagamento específico do chamador. `Amount` é o valor instruído na remessa; `SettlementDate`/`SettlementAmount` são a data/valor reais de liquidação informados pelo banco, zerados quando o pagamento não liquidou. `OccurrenceCodes` lista os códigos de ocorrência/rejeição não nulos (até cinco, cada um com 2 dígitos); a tabela que traduz um código para o que ele significa é específica de cada banco confirme com o manual dele, do mesmo jeito que já vale para `TED.Purpose`. `Accepted()` retorna `true` quando `OccurrenceCodes` está vazio.
+O resultado de um pagamento, conforme reportado pelo banco.
+
+- `YourNumber`: o "seu número" ecoado sem alteração desde a remessa (o mesmo valor que `AddPayment` recebeu no campo `YourNumber` do `Payment`). É o que permite casar um `ReturnMovement` de volta com um pagamento específico do chamador.
+- `Amount`: o valor instruído na remessa.
+- `SettlementDate`/`SettlementAmount`: a data e o valor reais de liquidação informados pelo banco, zerados quando o pagamento não liquidou. `SettlementAmount` pode divergir de `Amount` por um motivo específico do banco, como uma liquidação parcial.
+- `OccurrenceCodes`: os códigos de ocorrência/rejeição não nulos (até cinco, cada um com 2 dígitos), na ordem em que aparecem. A tabela que traduz um código para o que ele significa é específica de cada banco; confirme com o manual dele, do mesmo jeito que já vale para `TED.Purpose`.
+- `Authentication`/`BankControl`: dados de autenticação e de protocolo bancário vindos de um Segmento Z posterior ao segmento principal do movimento. Ficam vazios quando o layout do banco não implementa `layout.SegmentZ` (é o caso do `febraban240` embutido) ou quando o banco não enviou o segmento para aquele movimento, o que é permitido por todos os manuais contra os quais este SDK foi construído.
+
+`Accepted()` retorna `true` quando `OccurrenceCodes` está vazio.
+
+Os demais segmentos de um arquivo de retorno (B, BPix, J-52) devolvem documento, endereço e chave PIX do favorecido, dados que o chamador já tem nos seus próprios registros. O Segmento N (DARF/GPS) também não é decodificado.
 
 ---
 
@@ -527,6 +642,8 @@ func RegisterLayout(name string, l Layout)
 Torna `l` disponível sob o nome `name` para uso posterior em `Config.Layout`. Pensada para ser chamada uma única vez, a partir da função `init()` de um pacote de banco, no mesmo padrão de registro de drivers do `database/sql`.
 
 **Entra em pânico** (não retorna erro) se `l` for `nil`, se `name` for vazio, se `l.Version()` for vazio, ou se já existir um layout registrado com o mesmo nome: são todos erros de programação detectados na inicialização, não condições de tempo de execução para tratar com `recover`.
+
+O registro é single-shot por nome e mantém as entradas pelo resto da vida do processo. Quando o layout não é uma constante do processo, e sim um dado resolvido em tempo de execução, use `Config.LayoutSpec` (e `ParseReturnWithLayout` na leitura de retorno) em vez de registrá-lo.
 
 ### `type Layout`
 
@@ -580,7 +697,7 @@ type ReturnParseError struct {
 }
 ```
 
-Retornado por `ParseReturn`. `Field` vazio identifica um problema que não é de um campo específico (hoje, só uma linha com tamanho diferente de 240 caracteres ou um marcador de tipo de registro desconhecido `Reason` descreve qual); `Field` preenchido identifica um campo constante cujo conteúdo, na `Line` indicada (1-based), não bateu com `Expected` (o valor exigido pelo layout, já com o padding de renderização) `Got` é o que a linha realmente tinha ali. Como `FieldError`, este tipo é sempre o que `ParseReturn` retorna: nenhum erro do motor interno escapa sem tradução.
+Retornado por `ParseReturn` e por `ParseReturnWithLayout`. `Field` vazio identifica um problema que não é de um campo específico (uma linha com tamanho diferente de 240 caracteres ou um marcador de tipo de registro desconhecido; `Reason` descreve qual). `Field` preenchido identifica um campo constante cujo conteúdo, na `Line` indicada (1-based), não bateu com `Expected` (o valor exigido pelo layout, já com o padding de renderização); `Got` é o que a linha realmente tinha ali, o que normalmente significa arquivo corrompido ou lido contra o layout errado. Como `FieldError`, este tipo é sempre o que a leitura de retorno retorna: nenhum erro do motor interno escapa sem tradução.
 
 ### `type LimitExceededError`
 
@@ -632,28 +749,34 @@ Voltado a quem vai **escrever** o descritor de um banco, não a quem só usa o S
 type FieldKind int
 const (
     KindNumeric      FieldKind = iota // "9": alinhado à direita, zero à esquerda
-    KindAlphanumeric                   // "X": alinhado à esquerda, espaço à direita
+    KindAlphanumeric                  // "X": alinhado à esquerda, espaço à direita
+    KindDocument                      // "D": campo de CPF/CNPJ
 )
 func (k FieldKind) String() string
 ```
+
+`KindDocument` não faz parte da notação picture original do FEBRABAN: os layouts CNAB 240 são anteriores ao CNPJ alfanumérico da Receita Federal e declaram esses campos como `KindNumeric`. Ele renderiza exatamente como `KindNumeric` (alinhado à direita, zero à esquerda) para um valor só de dígitos, mas também aceita um valor que já ocupe a largura inteira do campo mesmo sem ser todo numérico, que é o que deixa um CNPJ alfanumérico passar em vez de ser recusado como "não numérico". Use essa espécie apenas em campos cuja `Key` carrega CPF/CNPJ, nunca em um campo genuinamente numérico (valor, data, sequencial), onde um valor largo e não numérico ainda deve ser um erro.
 
 ### `type FieldSpec`
 
 ```go
 type FieldSpec struct {
-    Name     string
-    Start    int // coluna inicial, 1-based, inclusive
-    End      int // coluna final, 1-based, inclusive
-    Kind     FieldKind
-    Decimals int    // casas decimais implícitas, notação 9(n)V(d)
-    Key      Key    // chave semântica; vazio se Const estiver definido
-    Const    string // valor fixo; vazio se Key estiver definido
+    Name      string
+    Start     int // coluna inicial, 1-based, inclusive
+    End       int // coluna final, 1-based, inclusive
+    Kind      FieldKind
+    Decimals  int    // casas decimais implícitas, notação 9(n)V(d)
+    Key       Key    // chave semântica; vazio se Const estiver definido
+    Const     string // valor fixo; vazio se Key estiver definido
+    Lowercase bool   // renderiza o campo alfanumérico em minúsculas
 }
 func (f FieldSpec) Size() int     // End - Start + 1
 func (f FieldSpec) IsConst() bool // true se o campo sempre renderiza um literal fixo
 ```
 
 Descreve uma faixa de colunas de um registro de 240 caracteres. Exatamente um entre `Key` e `Const` deve estar definido.
+
+`Lowercase` renderiza um campo alfanumérico em minúsculas em vez do maiúsculo que o CNAB normalmente impõe. Alguns manuais exigem isso em um campo específico, como uma chave PIX de e-mail que o diretório de destino compara considerando maiúsculas e minúsculas. É ignorado em campos numéricos e de documento, que não têm letras a converter. A validação do conjunto de caracteres continua acontecendo sobre a forma maiúscula, então um `Lowercase` não passa a aceitar um caractere que o CNAB não permite.
 
 ### `type RecordSpec`
 
@@ -690,10 +813,13 @@ const (
     SegmentN       RecordKey = "segment_n"        // DARF normal
     SegmentNSimple RecordKey = "segment_n_simple" // DARF Simples
     SegmentNSocial RecordKey = "segment_n_social" // GPS
+    SegmentZ       RecordKey = "segment_z"        // autenticação, só em retorno
 )
 ```
 
 Identifica o papel de uma linha de 240 caracteres dentro de um arquivo CNAB 240.
+
+`SegmentZ` existe só na direção de retorno: nenhum tipo de pagamento o produz em uma remessa. O banco o anexa depois do segmento principal de um movimento para informar os dados de autenticação daquele movimento (veja `ReturnMovement.Authentication`/`BankControl`). O layout `febraban240` embutido não o implementa; um layout de banco que precise dele deve declarar o `RecordSpec` correspondente.
 
 ```go
 var AllRecordKeys []RecordKey            // todos os valores acima, nesta ordem
@@ -735,9 +861,10 @@ Validação, toda feita no carregamento (não só quando o layout é usado depoi
 
 - `name` e `version` são obrigatórios no JSON.
 - toda chave do objeto `records` precisa ser um dos valores de `AllRecordKeys` (`"file_header"`, `"segment_a"`, etc.).
-- todo campo precisa de `kind` igual a `"9"`/`"numeric"` ou `"X"`/`"alphanumeric"`, e de uma faixa de colunas válida (`1 <= start <= end <= 240`).
+- todo campo precisa de `kind` igual a `"9"`/`"numeric"`, `"X"`/`"alphanumeric"` ou `"D"`/`"document"`, e de uma faixa de colunas válida (`1 <= start <= end <= 240`).
 - um campo nunca pode ter `key` e `const` definidos ao mesmo tempo.
 - todo `key` de campo, quando presente, precisa estar em `AllKeys`.
+- um campo pode definir `"lowercase": true` para ser renderizado em minúsculas (só faz efeito em campo alfanumérico).
 - cada registro precisa passar em `RecordSpec.Validate()` (cobertura de 1 a 240 sem lacuna nem sobreposição).
 
 Toda falha de validação retorna um erro descrevendo o registro e, quando aplicável, o número do campo dentro dele. Veja `NOVO-BANCO.md`, seção "Alternativa: descrevendo o layout em JSON em vez de Go", para o formato completo do arquivo e um exemplo de uso ponta a ponta com `cnab.RegisterLayout`.
@@ -753,7 +880,11 @@ type Values map[Key]any
 
 **Estruturais** (nunca definidas fora de `internal/engine`): `KeyBatchNumber`, `KeySequence`, `KeyBatchRecordCount`, `KeyBatchAmount`, `KeyBatchCount`, `KeyFileRecordCount`.
 
-**Semânticas** (definidas pela camada `cnab`, lidas pelos `FieldSpec.Key` de um layout): `KeyFileSequenceNumber`, `KeyFileGenerationDate`, `KeyFileGenerationTime`, `KeyCompanyRegistrationKind`, `KeyCompanyRegistration`, `KeyCompanyName`, `KeyAgreement`, `KeyBranch`, `KeyAccountNumber`, `KeyAccountCheckDigit`, `KeyBatchProductCode`, `KeyBatchServiceCode`, `KeyMovementType`, `KeyInstructionCode`, `KeyClearingCode`, `KeyBeneficiaryBankCode`, `KeyBeneficiaryBranch`, `KeyBeneficiaryAccount`, `KeyBeneficiaryCheckDigit`, `KeyPayeeName`, `KeyPayeeDocumentKind`, `KeyPayeeDocument`, `KeyYourNumber`, `KeyAmount`, `KeyPaymentDate`, `KeyPurposeCode`, `KeyPixKeyType`, `KeyPixKeyValue`, `KeyPayeeAddressStreet`/`Number`/`District`/`City`/`State`/`ZipCode`, `KeyBarcode`, `KeyDueDate`, `KeyDocumentAmount`, `KeyDiscountAmount`, `KeyAdditionAmount`, `KeyPayerDocumentKind`, `KeyPayerDocument`, `KeyPayerName`, `KeyAssignorDocumentKind`, `KeyAssignorDocument`, `KeyAssignorName`, `KeyTaxCode`, `KeyTaxpayerDocumentKind`, `KeyTaxpayerIdType`, `KeyTaxpayerDocument`, `KeyTaxpayerName`, `KeyReferenceNumber`, `KeyPeriod`, `KeyPrincipalAmount`, `KeyFineAmount`, `KeyInterestAmount`, `KeySettlementDate`, `KeySettlementAmount`, `KeyOccurrenceCodes` (estas três últimas só têm conteúdo real num arquivo de retorno ver "Processando retorno" e renderizam como zero/branco numa remessa quando não definidas).
+**Semânticas** (definidas pela camada `cnab`, lidas pelos `FieldSpec.Key` de um layout): `KeyFileSequenceNumber`, `KeyFileGenerationDate`, `KeyFileGenerationTime`, `KeyCompanyRegistrationKind`, `KeyCompanyRegistration`, `KeyCompanyName`, `KeyAgreement`, `KeyBranch`, `KeyAccountNumber`, `KeyAccountCheckDigit`, `KeyBranchCheckDigit`, `KeyFileDensity`, `KeyBatchProductCode`, `KeyBatchServiceCode`, `KeyMovementType`, `KeyInstructionCode`, `KeyClearingCode`, `KeyBeneficiaryBankCode`, `KeyBeneficiaryBranch`, `KeyBeneficiaryAccount`, `KeyBeneficiaryCheckDigit`, `KeyPayeeName`, `KeyPayeeDocumentKind`, `KeyPayeeDocument`, `KeyYourNumber`, `KeyAmount`, `KeyPaymentDate`, `KeyPurposeCode`, `KeySupplementaryInfo`, `KeyPixKeyType`, `KeyPixKeyValue`, `KeyPayeeAddressStreet`/`Number`/`District`/`City`/`State`/`ZipCode`, `KeyBarcode`, `KeyDueDate`, `KeyDocumentAmount`, `KeyDiscountAmount`, `KeyAdditionAmount`, `KeyPayerDocumentKind`, `KeyPayerDocument`, `KeyPayerName`, `KeyAssignorDocumentKind`, `KeyAssignorDocument`, `KeyAssignorName`, `KeyTaxCode`, `KeyTaxpayerDocumentKind`, `KeyTaxpayerIdType`, `KeyTaxpayerDocument`, `KeyTaxpayerName`, `KeyReferenceNumber`, `KeyPeriod`, `KeyPrincipalAmount`, `KeyFineAmount`, `KeyInterestAmount`.
+
+**Semânticas só de retorno** (renderizam como zero/branco numa remessa quando não definidas, veja "Processando retorno"): `KeySettlementDate`, `KeySettlementAmount`, `KeyOccurrenceCodes` (Segmento A) e `KeyAuthentication`, `KeyBankControl` (Segmento Z).
+
+`KeySupplementaryInfo` é o campo livre "Informação 2" do Segmento A. O conteúdo depende do banco e do tipo de pagamento: alguns bancos o reaproveitam para carregar um bloco formatado de um tipo específico (é o que `PixBankData` faz com documento, ISPB e tipo de conta do favorecido) em vez de uma mensagem livre. Um layout que não o amarra renderiza o campo em branco.
 
 ```go
 var AllKeys []Key          // toda constante Key acima, estrutural e semântica
