@@ -538,7 +538,9 @@ Normaliza a linha digitável de um boleto (47 dígitos) ou de uma conta/tributo 
 
 Todos os caminhos validam os dígitos verificadores FEBRABAN antes de retornar: uma linha digitável de 47 ou 48 dígitos tem o dígito verificador de cada um de seus campos conferido enquanto é reduzida a código de barras, e todo código de barras, digitado direto ou recém-montado, tem o seu próprio dígito verificador geral conferido contra os outros 43 dígitos. Uma entrada adulterada ou digitada errada é recusada aqui, em vez de virar silenciosamente um código de barras estruturalmente plausível mas errado.
 
-**Erros:** `*ValidationError{Context: "ConvertToBarcode", ...}` quando `raw` contém caracteres fora de dígitos e separadores, quando a quantidade de dígitos não é 44, 47 nem 48, ou quando algum dígito verificador (de campo ou geral) não confere.
+Em um documento de arrecadação (conta, tributo, guia), a regra do dígito verificador é escolhida pelo "identificador de valor efetivo ou referência", na posição 3 do código de barras: `6` seleciona módulo 10 e `8` seleciona módulo 11, tanto para o dígito geral quanto para os quatro dígitos de campo da linha digitável. Os valores `7` e `9` são as variantes "quantidade de moeda", cujo campo de valor não é em centavos; elas não são decodificadas e são recusadas explicitamente, em vez de aceitas com a regra errada.
+
+**Erros:** `*ValidationError{Context: "ConvertToBarcode", ...}` quando `raw` contém caracteres fora de dígitos e separadores, quando a quantidade de dígitos não é 44, 47 nem 48, quando o identificador de valor não é suportado, ou quando algum dígito verificador (de campo ou geral) não confere.
 
 ### `type BarcodeSegment`
 
