@@ -12,6 +12,11 @@ import (
 type BarcodeTax struct {
 	// Barcode is the bill's 44 digit barcode.
 	Barcode string
+	// Concessionaire is the name of the utility or tax authority being
+	// paid, reproduced in Segmento O. Optional: the payment is addressed
+	// by the barcode alone, so a bank that does not print the name still
+	// settles the bill.
+	Concessionaire string
 	// DueDate is the bill's due date.
 	DueDate time.Time
 	// Amount is the amount to pay.
@@ -36,6 +41,7 @@ func (b BarcodeTax) toSegments(l Layout) ([]DetailSegment, error) {
 	o := layout.Values{
 		layout.KeyMovementType: "0",
 		layout.KeyBarcode:      onlyDigits(b.Barcode),
+		layout.KeyAssignorName: b.Concessionaire,
 		layout.KeyDueDate:      formatDate(b.DueDate),
 		layout.KeyAmount:       int64(b.Amount),
 		layout.KeyPaymentDate:  formatDate(b.Date),
