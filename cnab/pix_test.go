@@ -88,6 +88,94 @@ func TestPixToSegments(t *testing.T) {
 	if segments[1].Values[layout.KeyPixKeyType] != "02" {
 		t.Fatalf("KeyPixKeyType = %v, want \"02\"", segments[1].Values[layout.KeyPixKeyType])
 	}
+	// A PIX by key credits no account, so Segmento A's beneficiary account
+	// check digit is an explicit zero rather than an unset value: the column
+	// is alphanumeric and would otherwise render blank. See
+	// TestPixToSegmentsAddressesNoAccountWithAZeroCheckDigit.
+	if segments[0].Values[layout.KeyBeneficiaryCheckDigit] != "0" {
+		t.Fatalf("KeyBeneficiaryCheckDigit = %v, want \"0\"", segments[0].Values[layout.KeyBeneficiaryCheckDigit])
+	}
+}
+
+// TestPixToSegmentsTaxIDKeyLeavesTheKeyColumnEmpty pins the rule Sicredi
+// states for Segmento B's "chavePixTelefoneEmailChaveAleatoria" column:
+// "Caso PIX de CPF/CNPJ: Deve deixar em branco". A CPF/CNPJ key is carried
+// by the beneficiary registration columns beside it plus the "03" type
+// code, so repeating the document in the key column is what the bank
+// rejects. Phone, e-mail and random keys keep writing their value there.
+func TestPixToSegmentsTaxIDKeyLeavesTheKeyColumnEmpty(t *testing.T) {
+	now := time.Now()
+	cases := []struct {
+		name     string
+		key      PixKey
+		wantCode string
+		wantKey  string
+	}{
+		{"cnpj", CNPJKey("11222333000181"), "03", ""},
+		{"cpf", CPFKey("11144477735"), "03", ""},
+		{"phone", PhoneKey("+5551998765432"), "01", "+5551998765432"},
+		{"email", EmailKey("fornecedor@exemplo.com"), "02", "fornecedor@exemplo.com"},
+		{"random", RandomKey("98798987-2398-4732-8743-824732984792"), "04", "98798987-2398-4732-8743-824732984792"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p := Pix{Key: c.key, Payee: validPayee(), Amount: 25200, Date: now.AddDate(0, 0, 1)}
+
+			// The key value stays required on the payment itself: this is
+			// only about which column the file writes it to.
+			if err := p.validate(now, validateOptions{}); err != nil {
+				t.Fatalf("validate() error = %v", err)
+			}
+
+			segments, err := p.toSegments(nil)
+			if err != nil {
+				t.Fatalf("toSegments() error = %v", err)
+			}
+			b := segments[1].Values
+			if got := b[layout.KeyPixKeyType]; got != c.wantCode {
+				t.Errorf("KeyPixKeyType = %v, want %q", got, c.wantCode)
+			}
+			if got := b[layout.KeyPixKeyValue]; got != c.wantKey {
+				t.Errorf("KeyPixKeyValue = %q, want %q", got, c.wantKey)
+			}
+			// Whichever the key, the beneficiary document keeps its own
+			// columns: emptying the key column must not empty this one.
+			if got := b[layout.KeyPayeeDocument]; got != validPayee().Registration.Digits() {
+				t.Errorf("KeyPayeeDocument = %v, want the payee document", got)
+			}
+		})
+	}
+}
+
+// TestPixToSegmentsAddressesNoAccountWithAZeroCheckDigit pins that a PIX by
+// key leaves Segmento A's whole beneficiary account block zero filled,
+// check digit included. The bank/branch/account columns are numeric and
+// zero fill on their own; the check digit column is alphanumeric, so an
+// unset value would render as a blank — which Sicredi rejects with
+// "contaCorrenteFavorecidoDv ... somente números".
+func TestPixToSegmentsAddressesNoAccountWithAZeroCheckDigit(t *testing.T) {
+	now := time.Now()
+	keys := []PixKey{
+		CNPJKey("11222333000181"),
+		CPFKey("11144477735"),
+		PhoneKey("+5551998765432"),
+		EmailKey("fornecedor@exemplo.com"),
+		RandomKey("98798987-2398-4732-8743-824732984792"),
+	}
+
+	for _, key := range keys {
+		t.Run(string(key.pixKeyType()), func(t *testing.T) {
+			p := Pix{Key: key, Payee: validPayee(), Amount: 25200, Date: now.AddDate(0, 0, 1)}
+			segments, err := p.toSegments(nil)
+			if err != nil {
+				t.Fatalf("toSegments() error = %v", err)
+			}
+			if got := segments[0].Values[layout.KeyBeneficiaryCheckDigit]; got != "0" {
+				t.Errorf("KeyBeneficiaryCheckDigit = %q, want \"0\"", got)
+			}
+		})
+	}
 }
 
 func TestPixBankDataValidateAndSegments(t *testing.T) {

@@ -74,6 +74,27 @@ func pixKeyFebrabanCode(t PixKeyType) string {
 	}
 }
 
+// pixKeyColumnValue returns what Segmento B's PIX key column carries for
+// key.
+//
+// A CPF/CNPJ key is already fully expressed by the beneficiary registration
+// columns (kind + document) that sit beside it, so the key column itself
+// stays empty for it: that column holds a phone, an e-mail or a random key
+// and nothing else. Sicredi names the column
+// "chavePixTelefoneEmailChaveAleatoria" and rejects a file that repeats the
+// document there ("Caso PIX de CPF/CNPJ: Deve deixar em branco"). The key
+// value is still required on the Pix value itself — validate rejects an
+// empty one — because it is what says who is being paid; this is only about
+// which column the file writes it to.
+func pixKeyColumnValue(key PixKey) string {
+	switch key.pixKeyType() {
+	case PixKeyTypeCPF, PixKeyTypeCNPJ:
+		return ""
+	default:
+		return key.pixKeyValue()
+	}
+}
+
 // Pix is a PIX transfer addressed by key (FEBRABAN Segmentos A e B).
 type Pix struct {
 	// Key is the beneficiary's PIX key.
@@ -105,16 +126,30 @@ func (p Pix) toSegments(l Layout) ([]DetailSegment, error) {
 	a := layout.Values{
 		layout.KeyMovementType: "0",
 		layout.KeyClearingCode: "009", // PIX (SPI)
-		layout.KeyPayeeName:    p.Payee.Name,
-		layout.KeyYourNumber:   p.YourNumber,
-		layout.KeyAmount:       int64(p.Amount),
-		layout.KeyPaymentDate:  formatDate(p.Date),
+		// A PIX addressed by key credits no account of its own, so the
+		// beneficiary bank/branch/account columns of Segmento A carry
+		// zeros. The account's check digit is spelled out here because it
+		// is the only one of the four that is alphanumeric in the FEBRABAN
+		// picture (a check digit may be a letter), and an unset
+		// alphanumeric renders as a blank — which the banks that validate
+		// the column reject, Sicredi among them: "alinhada a direita com
+		// zeros esquerda, sem espaços e somente números". The other three
+		// are numeric and already zero-fill on their own.
+		//
+		// Only this payment kind needs it: TED, TEV, CreditAccount and
+		// PixBankData all address a real account and validate through
+		// Account.validate, which requires a CheckDigit.
+		layout.KeyBeneficiaryCheckDigit: "0",
+		layout.KeyPayeeName:             p.Payee.Name,
+		layout.KeyYourNumber:            p.YourNumber,
+		layout.KeyAmount:                int64(p.Amount),
+		layout.KeyPaymentDate:           formatDate(p.Date),
 	}
 	b := layout.Values{
 		layout.KeyPayeeDocumentKind: documentKind(p.Payee.Registration),
 		layout.KeyPayeeDocument:     p.Payee.Registration.Digits(),
 		layout.KeyPixKeyType:        pixKeyFebrabanCode(p.Key.pixKeyType()),
-		layout.KeyPixKeyValue:       p.Key.pixKeyValue(),
+		layout.KeyPixKeyValue:       pixKeyColumnValue(p.Key),
 	}
 	return []DetailSegment{
 		{Key: layout.SegmentA, Values: a},
