@@ -16,7 +16,7 @@ var segmentOSpec = layout.RecordSpec{
 		numeric("MovementType", 15, 15, layout.KeyMovementType),
 		numeric("MovementInstructionCode", 16, 17, layout.KeyInstructionCode),
 		alpha("BarCode", 18, 61, layout.KeyBarcode),
-		alphaFiller(62, 91),
+		alpha("ConcessionaireName", 62, 91, layout.KeyAssignorName),
 		numeric("DueDate", 92, 99, layout.KeyDueDate),
 		numeric("PaymentDate", 100, 107, layout.KeyPaymentDate),
 		numericDecimal("PaymentTotalAmount", 108, 122, 2, layout.KeyAmount),

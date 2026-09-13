@@ -507,21 +507,26 @@ type BoletoPayment struct {
 }
 ```
 
-Pagamento de boleto (Segmentos J e J-52). **Validação:** `Barcode` com 44 dígitos, `Assignor` e `Payer` válidos, `Amount > 0`, `Date` não retroativa.
+Pagamento de boleto (Segmentos J e J-52). O nome do cedente (`Assignor.Name`) é escrito tanto no Segmento J quanto no J-52, já que vários manuais pedem o nome no próprio Segmento J.
+
+**Validação:** `Barcode` com 44 dígitos, `Assignor` e `Payer` válidos, `Amount > 0`, `Date` não retroativa.
 
 ### `type BarcodeTax`
 
 ```go
 type BarcodeTax struct {
-    Barcode    string // 44 dígitos (veja ConvertToBarcode)
-    DueDate    time.Time
-    Amount     Cents
-    Date       time.Time
-    YourNumber string
+    Barcode        string // 44 dígitos (veja ConvertToBarcode)
+    Concessionaire string // nome da concessionária/órgão, opcional
+    DueDate        time.Time
+    Amount         Cents
+    Date           time.Time
+    YourNumber     string
 }
 ```
 
-Pagamento de conta/tributo com código de barras, como conta de energia (Segmento O). **Validação:** `Barcode` com 44 dígitos, `Amount > 0`, `Date` não retroativa.
+Pagamento de conta/tributo com código de barras, como conta de energia (Segmento O). `Concessionaire` é o nome da concessionária ou do órgão arrecadador, reproduzido no Segmento O; é opcional, porque o pagamento é endereçado só pelo código de barras, então um banco que não imprime o nome liquida a conta do mesmo jeito.
+
+**Validação:** `Barcode` com 44 dígitos, `Amount > 0`, `Date` não retroativa.
 
 ### `type DARF`
 

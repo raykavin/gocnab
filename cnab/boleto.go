@@ -71,6 +71,7 @@ func (b BoletoPayment) toSegments(l Layout) ([]DetailSegment, error) {
 		layout.KeyPayerName:            b.Payer.Name,
 		layout.KeyAssignorDocumentKind: documentKind(b.Assignor.Registration),
 		layout.KeyAssignorDocument:     b.Assignor.Registration.Digits(),
+		layout.KeyAssignorName:         b.Assignor.Name,
 	}
 	return []DetailSegment{
 		{Key: layout.SegmentJ, Values: j},
