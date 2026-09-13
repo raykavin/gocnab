@@ -43,32 +43,48 @@ func buildBankSlipLine(t *testing.T, barcode string) string {
 
 // buildTaxBarcode assembles a structurally valid, correctly check-digited
 // 44-digit utility-bill/tax barcode using the common módulo 10 variant
-// (value-type digit '6' at position 3, 1-indexed, index 2): productID(1) +
-// segment(1, unvalidated by this package) + valueType(1) + generalDV(1,
-// módulo 10) + value(11) + freeField(29).
+// (value-type digit '6' at position 3, 1-indexed, index 2).
 func buildTaxBarcode(value int64, freeField string) string {
+	return buildTaxBarcodeVariant('6', value, freeField)
+}
+
+// buildTaxBarcodeVariant assembles a 44-digit collection barcode for a
+// given value-type digit, check-digited with whichever módulo that digit
+// selects: productID(1) + segment(1, unvalidated by this package) +
+// valueType(1) + generalDV(1) + value(11) + freeField(29). '6' is the
+// módulo 10 variant, '8' the módulo 11 one.
+func buildTaxBarcodeVariant(valueType byte, value int64, freeField string) string {
 	if len(freeField) != 29 {
-		panic("buildTaxBarcode: freeField must have 29 digits")
+		panic("buildTaxBarcodeVariant: freeField must have 29 digits")
 	}
-	head := "8" + "1" + "6"                        // index 0 (product), 1 (segment), 2 (value type)
+	checkDigit, ok := collectionCheckDigit(valueType)
+	if !ok {
+		panic("buildTaxBarcodeVariant: unsupported value type")
+	}
+	head := "8" + "1" + string(valueType)          // index 0 (product), 1 (segment), 2 (value type)
 	tail := zeroPad(itoa64(value), 11) + freeField // index 4..43
-	dv := mod10(head + tail)
+	dv := checkDigit(head + tail)
 	return head + string(dv) + tail
 }
 
 // buildTaxLine converts a valid 44-digit tax barcode into its 48-digit
 // typeable line: four 12-character fields, each 11 barcode data digits
-// followed by their own módulo 10 check digit.
+// followed by its own check digit, under the rule the barcode's value-type
+// digit selects.
 func buildTaxLine(t *testing.T, barcode string) string {
 	t.Helper()
 	if len(barcode) != 44 {
 		t.Fatalf("bad test input: barcode=%q", barcode)
 	}
+	checkDigit, ok := collectionCheckDigit(barcode[2])
+	if !ok {
+		t.Fatalf("bad test input: unsupported value type %q", barcode[2])
+	}
 	line := make([]byte, 0, 48)
 	for i := 0; i < 4; i++ {
 		data := barcode[i*11 : i*11+11]
 		line = append(line, data...)
-		line = append(line, mod10(data))
+		line = append(line, checkDigit(data))
 	}
 	return string(line)
 }
@@ -193,13 +209,83 @@ func TestConvertToBarcode_TaxTypeableLine_TamperedFieldCheckDigit_Rejected(t *te
 	}
 }
 
-func TestConvertToBarcode_TaxBarcode_UnsupportedMod11Variant_Rejected(t *testing.T) {
+// TestConvertToBarcode_TaxBarcode_UnsupportedValueTypes_Rejected pins the
+// value-type digits this package does not decode. '7' and '9' are the
+// "quantidade de moeda" variants, whose value field is not centavos.
+//
+// This test used to call '7' "the unimplemented módulo 11 variant", which
+// had FEBRABAN's table backwards: the módulo is selected by 6/7 against
+// 8/9, so '8' is a módulo 11 document — and it was being validated with
+// módulo 10, which rejected well-formed tax guides.
+func TestConvertToBarcode_TaxBarcode_UnsupportedValueTypes_Rejected(t *testing.T) {
 	barcode := buildTaxBarcode(1000, "00000000000000000000000000000"[:29])
-	tampered := []byte(barcode)
-	tampered[2] = '7' // selects the unimplemented módulo 11 variant
+	for _, valueType := range []byte{'0', '5', '7', '9'} {
+		t.Run(string(valueType), func(t *testing.T) {
+			tampered := []byte(barcode)
+			tampered[2] = valueType
+			if _, _, err := ConvertToBarcode(string(tampered)); err == nil {
+				t.Fatalf("expected an error for value type %q, got nil", valueType)
+			}
+		})
+	}
+}
 
+// TestConvertToBarcode_TaxMod11_RealGPSDocument is the regression test for
+// the reported failure, on the CNAB side: the same GPS guide that
+// pkg/boleto rejected also had to reach Segmento O generation, and
+// taxLineToBarcode carried an identical copy of the same défaut.
+func TestConvertToBarcode_TaxMod11_RealGPSDocument(t *testing.T) {
+	const (
+		line    = "858000001239061603852620610716262474385997310225"
+		barcode = "85800000123061603852626107162624738599731022"
+	)
+
+	t.Run("typeable line", func(t *testing.T) {
+		segment, got, err := ConvertToBarcode(line)
+		if err != nil {
+			t.Fatalf("ConvertToBarcode(line) error = %v, want success", err)
+		}
+		if segment != SegmentFeesOrTaxes {
+			t.Errorf("segment = %v, want SegmentFeesOrTaxes", segment)
+		}
+		if got != barcode {
+			t.Errorf("barcode = %s, want %s", got, barcode)
+		}
+	})
+
+	t.Run("barcode", func(t *testing.T) {
+		segment, got, err := ConvertToBarcode(barcode)
+		if err != nil {
+			t.Fatalf("ConvertToBarcode(barcode) error = %v, want success", err)
+		}
+		if segment != SegmentFeesOrTaxes {
+			t.Errorf("segment = %v, want SegmentFeesOrTaxes", segment)
+		}
+		if got != barcode {
+			t.Errorf("barcode = %s, want %s", got, barcode)
+		}
+	})
+}
+
+// TestConvertToBarcode_TaxMod11_RoundTripAndTampering exercises the módulo
+// 11 variant through the same shape the módulo 10 one uses, and keeps the
+// fix from degenerating into accepting anything.
+func TestConvertToBarcode_TaxMod11_RoundTripAndTampering(t *testing.T) {
+	barcode := buildTaxBarcodeVariant('8', 4599, "00000000000000000000000000000"[:29])
+	line := buildTaxLine(t, barcode)
+
+	segment, got, err := ConvertToBarcode(line)
+	if err != nil {
+		t.Fatalf("ConvertToBarcode() error = %v", err)
+	}
+	if segment != SegmentFeesOrTaxes || got != barcode {
+		t.Errorf("got (%v, %s), want (SegmentFeesOrTaxes, %s)", segment, got, barcode)
+	}
+
+	tampered := []byte(line)
+	tampered[11] = '0' + (tampered[11]-'0'+1)%10
 	if _, _, err := ConvertToBarcode(string(tampered)); err == nil {
-		t.Fatal("expected an error for the unsupported módulo 11 utility-bill variant, got nil")
+		t.Error("expected an error for a tampered módulo 11 field check digit, got nil")
 	}
 }
 

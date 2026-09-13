@@ -150,11 +150,23 @@ func taxLineToBarcode(line string) (string, error) {
 		return "", &ValidationError{Context: "ConvertToBarcode", Reason: "tax typeable line must have 48 digits"}
 	}
 
+	// The value-type digit sits at position 3 of the barcode, which is also
+	// position 3 of the line: the first field's 11 data digits are the
+	// barcode's own first 11. It selects the rule the four field check
+	// digits follow, so it is read before any of them is checked.
+	checkDigit, ok := collectionCheckDigit(line[2])
+	if !ok {
+		return "", &ValidationError{
+			Context: "ConvertToBarcode",
+			Reason:  "utility bill/tax value type is not supported",
+		}
+	}
+
 	barcode := make([]byte, 0, 44)
 	for i := 0; i < 4; i++ {
 		segment := line[i*12 : i*12+12]
 		data, dv := segment[0:11], segment[11]
-		if mod10(data) != dv {
+		if checkDigit(data) != dv {
 			return "", &ValidationError{
 				Context: "ConvertToBarcode",
 				Reason:  "tax typeable line field check digit does not match",
