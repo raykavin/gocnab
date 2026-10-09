@@ -82,9 +82,12 @@ type ReturnFile struct {
 }
 
 // ParseReturn decodes a CNAB 240 return file previously received from a
-// bank, using the layout registered under layoutName normally the same
-// layout the corresponding remittance was generated with, since a bank
-// returns data in the same physical positions it received it in.
+// bank, using the layout registered under layoutName, normally the same
+// layout the corresponding remittance was generated with: a bank returns
+// data in the same physical positions it received it in. Where it does not
+// echo a record exactly as the remittance wrote it, the layout says so by
+// implementing layout.ReturnLayout, and ParseReturn reads that record with
+// its return RecordSpec instead (see layout.ForReturn).
 //
 // It splits content into 240 character lines (accepting either CRLF or
 // bare LF line endings, and tolerating a trailing blank line), classifies
@@ -102,8 +105,9 @@ type ReturnFile struct {
 // *ReturnParseError (a type this package exports, unlike the internal
 // engine errors ParseReturn's lower-level calls actually produce) if a
 // line is not exactly 240 characters, has an unrecognized record type
-// marker, or (classified as a Segmento A, J or O) has a const field whose
-// content does not match what the layout expects there.
+// marker, or (classified as a Segmento A, J, O or Z) has a const field
+// whose content does not match what the layout's return records expect
+// there.
 func ParseReturn(layoutName string, content []byte) (*ReturnFile, error) {
 	l, ok := layout.Lookup(layoutName)
 	if !ok {
@@ -124,7 +128,7 @@ func ParseReturnWithLayout(l Layout, content []byte) (*ReturnFile, error) {
 		return nil, &ValidationError{Context: "ParseReturn", Reason: "Layout is required"}
 	}
 
-	eng, err := engine.New(l)
+	eng, err := engine.New(layout.ForReturn(l))
 	if err != nil {
 		return nil, err
 	}

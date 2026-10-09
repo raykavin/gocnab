@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/raykavin/gocnab/cnab/layout"
 	"github.com/raykavin/gocnab/internal/engine"
 )
 
@@ -205,5 +206,124 @@ func TestParseReturn_ExposesMismatchAsPublicType(t *testing.T) {
 	}
 	if parseErr.Expected != "000" || parseErr.Got != "999" {
 		t.Errorf("Expected/Got = %q/%q, want %q/%q", parseErr.Expected, parseErr.Got, "000", "999")
+	}
+}
+
+// returnOverrideLayout is a registered layout that declares return records
+// of its own, the way a bank layout does when its return files do not echo
+// every remittance column back.
+type returnOverrideLayout struct {
+	Layout
+	returnRecords map[layout.RecordKey]layout.RecordSpec
+}
+
+func (l returnOverrideLayout) ReturnRecord(key layout.RecordKey) (layout.RecordSpec, bool) {
+	spec, ok := l.returnRecords[key]
+	return spec, ok
+}
+
+// blankNotifyFavoredLayout is febraban240 with one difference on the way
+// back: its Segmento A return record leaves column 230 ("Aviso ao
+// favorecido") free, where the remittance record writes the const "0". It
+// is the case of a bank that returns that column blank, which febraban240
+// alone rejects.
+func blankNotifyFavoredLayout(t *testing.T) returnOverrideLayout {
+	t.Helper()
+	base, ok := layout.Lookup("febraban240")
+	if !ok {
+		t.Fatal(`layout "febraban240" is not registered`)
+	}
+	segmentA, ok := base.Record(layout.SegmentA)
+	if !ok {
+		t.Fatal("febraban240 has no Segmento A")
+	}
+
+	fields := make([]layout.FieldSpec, len(segmentA.Fields))
+	copy(fields, segmentA.Fields)
+	found := false
+	for i, f := range fields {
+		if f.Start == 230 {
+			if f.Const != "0" {
+				t.Fatalf("febraban240 Segmento A column 230 const = %q, want %q", f.Const, "0")
+			}
+			fields[i] = layout.FieldSpec{Name: f.Name, Start: 230, End: 230, Kind: layout.KindAlphanumeric}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("febraban240 Segmento A has no field at column 230")
+	}
+
+	return returnOverrideLayout{
+		Layout: base,
+		returnRecords: map[layout.RecordKey]layout.RecordSpec{
+			layout.SegmentA: {Name: segmentA.Name, Fields: fields},
+		},
+	}
+}
+
+func TestParseReturnWithLayout_ReadsWithReturnRecords(t *testing.T) {
+	l := blankNotifyFavoredLayout(t)
+
+	cfg := validConfig()
+	cfg.LayoutSpec = l
+	f, err := NewRemittance(cfg)
+	if err != nil {
+		t.Fatalf("NewRemittance() error = %v", err)
+	}
+	batch, err := f.NewBatch(SupplierPayment, PixTransfer)
+	if err != nil {
+		t.Fatalf("NewBatch() error = %v", err)
+	}
+	if err := batch.AddPayment(Pix{
+		Key:        EmailKey("fornecedor@exemplo.com"),
+		Payee:      validPayee(),
+		Amount:     Cents(25200),
+		Date:       time.Now().AddDate(0, 0, 1),
+		YourNumber: "NF-0001",
+	}); err != nil {
+		t.Fatalf("AddPayment() error = %v", err)
+	}
+	content, err := f.Generate()
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	// The remittance is written with the remittance record: the return
+	// record never reaches generation.
+	first := segmentALineIndex(t, content, 0)
+	if got := splitLines(content)[first][229:230]; got != "0" {
+		t.Fatalf("generated Segmento A column 230 = %q, want %q", got, "0")
+	}
+
+	// The bank answers with column 230 blank and the payment settled.
+	patchLine(t, content, first, 230, 230, " ")
+	patchLine(t, content, first, 155, 162, "02012026")
+	patchLine(t, content, first, 163, 177, "000000000025200")
+
+	// Read with the remittance records alone, that blank is a mismatch.
+	_, err = ParseReturn("febraban240", content)
+	var parseErr *ReturnParseError
+	if !errors.As(err, &parseErr) || parseErr.Field != "NotifyFavored" {
+		t.Fatalf("ParseReturn(febraban240) error = %v, want a NotifyFavored mismatch", err)
+	}
+
+	result, err := ParseReturnWithLayout(l, content)
+	if err != nil {
+		t.Fatalf("ParseReturnWithLayout() error = %v", err)
+	}
+	if len(result.Movements) != 1 {
+		t.Fatalf("len(Movements) = %d, want 1", len(result.Movements))
+	}
+	m := result.Movements[0]
+	if m.YourNumber != "NF-0001" || m.Amount != 25200 || !m.Accepted() || m.SettlementAmount != 25200 {
+		t.Errorf("Movements[0] = %+v, want NF-0001 for 25200, accepted and settled for 25200", m)
+	}
+
+	// The return record keeps every other const it declares.
+	patchLine(t, content, first, 1, 3, "999")
+	_, err = ParseReturnWithLayout(l, content)
+	if !errors.As(err, &parseErr) || parseErr.Field != "BankCode" {
+		t.Fatalf("ParseReturnWithLayout() error = %v, want a BankCode mismatch", err)
 	}
 }

@@ -104,7 +104,7 @@ Se o seu banco não suportar algum segmento (por exemplo, não processa GPS), si
 
 Se o manual do seu banco documenta conteúdo diferente para o Segmento B em pagamentos comuns versus PIX (ou para o Segmento N em DARF/DARF Simples/GPS), implemente cada `RecordKey` correspondente separadamente, com posições fiéis ao manual de cada caso. Se o seu banco não suporta PIX ainda, basta não implementar `SegmentBPix`.
 
-`SegmentZ` só aparece em arquivo de retorno: nenhum tipo de pagamento o produz em uma remessa. Implemente-o se o seu banco envia autenticação de pagamento nesse segmento e você quer que `cnab.ParseReturn` preencha `ReturnMovement.Authentication` e `ReturnMovement.BankControl`; sem ele, os dois campos ficam vazios e o segmento é ignorado na leitura. O layout de referência `febraban240` não o implementa, porque o padrão FEBRABAN puro não fixa o conteúdo dele.
+`SegmentZ` só aparece em arquivo de retorno: nenhum tipo de pagamento o produz em uma remessa. Implemente-o se o seu banco envia autenticação de pagamento nesse segmento e você quer que `cnab.ParseReturn` preencha `ReturnMovement.Authentication` e `ReturnMovement.BankControl`; sem ele, os dois campos ficam vazios e o segmento é ignorado na leitura. O layout de referência `febraban240` não o implementa, porque o padrão FEBRABAN puro não fixa o conteúdo dele. Por existir só no retorno, ele é declarado em `ReturnRecord` (veja "Quando o retorno não devolve a remessa igual"), e não em `Record`.
 
 ## Passo 6: registre o pacote e use
 
@@ -134,6 +134,27 @@ No mínimo, replique os testes de `layouts/febraban240/febraban240_test.go`:
 
 Depois disso, gere um arquivo de exemplo completo (um `File` com pelo menos um lote e um pagamento de cada tipo que seu banco suporta) e compare visualmente as posições de campos fixos e conhecidos (código do banco, tipo de registro, código de segmento) com um arquivo de remessa real do seu banco, se tiver um à mão. Esse é o jeito mais rápido de pegar um deslocamento de coluna errado.
 
+## Quando o retorno não devolve a remessa igual
+
+O retorno usa as mesmas colunas da remessa, mas algumas são do banco na volta. `cnab.ParseReturn` confere todo campo `Const` dos registros que decodifica (A, J, O e Z) contra a linha, e um `Const` descreve o que **o pagador** escreve. Se o banco devolve aquela coluna diferente, a leitura falha com `*ReturnParseError`. Caso real: o Sicredi exige `"0"` na coluna 230 do Segmento A ("aviso ao favorecido") na remessa e, em produção, devolve a mesma coluna em branco.
+
+Não tire o `Const` do registro da remessa para o retorno passar: isso muda o arquivo que o banco recebe. Declare o registro também para o retorno, implementando `layout.ReturnLayout`:
+
+```go
+func (meubanco) ReturnRecord(key layout.RecordKey) (layout.RecordSpec, bool) {
+    switch key {
+    case layout.SegmentA:
+        return segmentAReturnSpec, true // a coluna 230 sem Const
+    case layout.SegmentZ:
+        return segmentZSpec, true // só existe no retorno
+    default:
+        return layout.RecordSpec{}, false // lido como a remessa o escreve
+    }
+}
+```
+
+Declare só os registros que diferem, cada um completo (colunas 1 a 240, a mesma regra de `Record`). Todo o resto continua sendo lido com o `RecordSpec` de `Record`, e a remessa nunca usa `ReturnRecord`. `layout.ForReturn(l)` devolve a visão que `ParseReturn` usa, caso você precise ler algum registro do retorno por conta própria.
+
 ## Alternativa: descrevendo o layout em JSON em vez de Go
 
 Os passos 3 e 4 acima descrevem o caminho principal (structs Go, validado em tempo de compilação). Para casos em que o layout precisa ser carregado sem recompilar o binário (por exemplo, times que não programam em Go editando a posição de campos, ou um layout mantido fora do repositório), `cnab/layout` também oferece um carregador de JSON:
@@ -143,13 +164,13 @@ func NewFromJSON(data []byte) (layout.Layout, error)
 func NewFromJSONFile(path string) (layout.Layout, error)
 ```
 
-O JSON usa exatamente o mesmo vocabulário dos passos anteriores: as chaves do objeto `records` são os valores de `RecordKey` (`"file_header"`, `"segment_a"`, etc.), e cada campo é um `FieldSpec` com `start`/`end`/`kind` (`"9"`, `"X"` ou `"D"`, também aceitos por extenso como `"numeric"`, `"alphanumeric"` e `"document"`) e `key` ou `const` (nunca os dois). Um campo alfanumérico pode ainda trazer `"lowercase": true`. Exemplo mínimo:
+O JSON usa exatamente o mesmo vocabulário dos passos anteriores: as chaves do objeto `remittance_records` são os valores de `RecordKey` (`"file_header"`, `"segment_a"`, etc.), e cada campo é um `FieldSpec` com `start`/`end`/`kind` (`"9"`, `"X"` ou `"D"`, também aceitos por extenso como `"numeric"`, `"alphanumeric"` e `"document"`) e `key` ou `const` (nunca os dois). Um campo alfanumérico pode ainda trazer `"lowercase": true`. Exemplo mínimo:
 
 ```json
 {
   "name": "meubanco240",
   "version": "081",
-  "records": {
+  "remittance_records": {
     "file_header": {
       "fields": [
         {"name": "BankCode", "start": 1, "end": 3, "kind": "9", "const": "341"},
@@ -172,10 +193,32 @@ if err != nil {
 cnab.RegisterLayout("meubanco240", l)
 ```
 
+Os registros que o banco devolve diferente (veja "Quando o retorno não devolve a remessa igual") vão numa segunda seção, `return_records`, opcional e com o mesmo formato. Só entram nela os registros que diferem, cada um completo; um registro só de retorno, como o `segment_z`, também vai nela:
+
+```json
+{
+  "name": "meubanco240",
+  "version": "081",
+  "remittance_records": { "...": "..." },
+  "return_records": {
+    "segment_a": {
+      "fields": [
+        {"name": "NotifyFavored", "start": 230, "end": 230, "kind": "X"}
+      ]
+    }
+  }
+}
+```
+
+(Exemplo abreviado: o `segment_a` de `return_records` precisa cobrir as 240 colunas, como qualquer outro registro.)
+
+Um descritor anterior a essa divisão usa `records` em vez de `remittance_records`. O nome antigo continua aceito, então esse descritor carrega sem mudança; só não pode haver os dois no mesmo arquivo.
+
 `NewFromJSON`/`NewFromJSONFile` validam a configuração já no carregamento, sem esperar o `Generate()` de um arquivo real para revelar o problema:
 
 - `name` e `version` são obrigatórios.
-- toda chave de `records` precisa ser um `RecordKey` conhecido (a mensagem de erro lista os valores válidos).
+- `remittance_records` (ou `records`) é obrigatório e não pode estar vazio; `return_records` é opcional.
+- toda chave das duas seções precisa ser um `RecordKey` conhecido (a mensagem de erro lista os valores válidos e diz em qual seção está o problema).
 - todo `key` de campo precisa ser uma chave conhecida do vocabulário (`cnab/layout/value.go`); um nome de chave digitado errado é rejeitado na hora, com o registro e o número do campo que causou o erro.
 - todo `kind` precisa ser `"9"`/`"numeric"`, `"X"`/`"alphanumeric"` ou `"D"`/`"document"`.
 - toda faixa de colunas precisa satisfazer `1 <= start <= end <= 240`.

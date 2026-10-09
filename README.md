@@ -148,6 +148,8 @@ for _, m := range result.Movements {
 
 `ParseReturn` gera um movimento por segmento principal encontrado: Segmento A (crédito em conta, TED, PIX), Segmento J (boleto) e Segmento O (conta/tributo com código de barras). De cada um extrai o "seu número" enviado na remessa, o valor instruído, a data e o valor reais de liquidação e os códigos de ocorrência/rejeição, o suficiente para reconciliar um pagamento. Um Segmento Z posterior preenche os dados de autenticação do movimento, quando o layout do banco o implementa. Os segmentos complementares (B, BPix, J-52) e o Segmento N são ignorados; veja "Processando retorno" em [ARQUITETURA.md](ARQUITETURA.md) para o motivo.
 
+Quando o banco não devolve algum registro igual ao que recebeu (uma coluna que a remessa preenche com um valor fixo volta em branco, por exemplo), o layout declara esse registro também para o retorno: `layout.ReturnLayout` em Go, ou a seção `return_records` no descritor JSON. `ParseReturn` lê esse registro com a declaração de retorno, e a remessa continua sendo escrita com a dela.
+
 A tabela de códigos de ocorrência é específica de cada banco: confirme com o manual dele antes de interpretar um código.
 
 ## Layouts de banco
@@ -156,7 +158,7 @@ O layout `febraban240` é o padrão FEBRABAN puro e já vem registrado; ele não
 
 - **Registro por nome**, o caminho usual para um layout que é constante do binário: o pacote do banco chama `layout.Register` no seu `init()` e o chamador informa o nome em `Config.Layout`.
 - **Instância direta**, para um layout que é dado resolvido em tempo de execução: preencha `Config.LayoutSpec` (e use `ParseReturnWithLayout` na leitura de retorno).
-- **Descritor JSON**, para trocar o layout sem recompilar: `layout.NewFromJSON`/`layout.NewFromJSONFile`, com validação completa já no carregamento.
+- **Descritor JSON**, para trocar o layout sem recompilar: `layout.NewFromJSON`/`layout.NewFromJSONFile`, com validação completa já no carregamento. Os registros da remessa vão em `remittance_records`; os que o banco devolve diferente, em `return_records`.
 
 O passo a passo para derivar o layout de um banco real a partir do manual dele está em [NOVO-BANCO.md](NOVO-BANCO.md).
 
