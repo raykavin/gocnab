@@ -746,11 +746,11 @@ case cnab.SegmentFeesOrTaxes:
 func ParseReturn(layoutName string, content []byte) (*ReturnFile, error)
 ```
 
-Decodifica um arquivo de retorno CNAB 240 usando o layout registrado sob `layoutName`, normalmente o mesmo layout com que a remessa correspondente foi gerada. Aceita `content` terminado em CRLF ou apenas LF, com ou sem linha vazia final.
+Decodifica um arquivo de retorno CNAB 240 usando o layout registrado sob `layoutName`, normalmente o mesmo layout com que a remessa correspondente foi gerada. Quando o layout implementa `layout.ReturnLayout`, cada registro que ele declara para o retorno é lido com essa declaração, e os demais com o mesmo `RecordSpec` da remessa (veja `layout.ForReturn`). Aceita `content` terminado em CRLF ou apenas LF, com ou sem linha vazia final.
 
 Decodifica um movimento para cada **Segmento A** (crédito em conta, TED, PIX), **Segmento J** (boleto) e **Segmento O** (conta/tributo com código de barras) encontrado. Um Segmento J cujo campo "Código Reg. Opcional" (colunas 18-19) contém `"52"` é um registro de continuação J-52, não um movimento, e é pulado como qualquer outro segmento de continuação. Um **Segmento Z** logo após o segmento principal de um movimento preenche `Authentication`/`BankControl` daquele movimento. Todo o resto (headers/trailers de arquivo e lote, Segmentos B/BPix/J-52/N e qualquer outro segmento de detalhe) é ignorado. Veja "Processando retorno" em `ARQUITETURA.md` para o motivo de o segmento principal ser suficiente.
 
-**Erros:** `*ValidationError` se `layoutName` não estiver registrado ou se o layout em si for inválido (mesmas condições de `NewRemittance`); `*ReturnParseError` se uma linha não tiver exatamente 240 caracteres, tiver um marcador de tipo de registro desconhecido, ou tiver um campo constante cujo conteúdo não bate com o que o layout espera ali.
+**Erros:** `*ValidationError` se `layoutName` não estiver registrado ou se o layout em si for inválido (mesmas condições de `NewRemittance`); `*ReturnParseError` se uma linha não tiver exatamente 240 caracteres, tiver um marcador de tipo de registro desconhecido, ou tiver um campo constante cujo conteúdo não bate com o que o registro de retorno do layout espera ali.
 
 ### `func ParseReturnWithLayout`
 
@@ -1016,6 +1016,22 @@ func Names() []string // nomes registrados, ordenados
 
 `Register` é a função de baixo nível por trás de `cnab.RegisterLayout` (mesmo registro interno). `Names` é útil para mensagens de erro que sugerem alternativas válidas.
 
+### `type ReturnLayout` / `func ForReturn`
+
+```go
+type ReturnLayout interface {
+    Layout
+    ReturnRecord(key RecordKey) (spec RecordSpec, ok bool)
+}
+func ForReturn(l Layout) Layout
+```
+
+Um banco devolve o retorno nas mesmas 240 colunas que recebeu, mas algumas delas são dele na volta: uma coluna que a remessa preenche com um valor fixo pode voltar em branco, ou trazer algo que só o banco sabe. Como a leitura confere todo campo `Const` contra a linha, um `Const` que descreve o que o pagador escreve faria o retorno falhar. `ReturnLayout` é o layout que declara o registro como o banco o envia: `ReturnRecord` devolve o `RecordSpec` de retorno de `key`, e `ok=false` quando o retorno traz aquele registro exatamente como `Record` o descreve.
+
+Declare só os registros que diferem, cada um completo (colunas 1 a 240). Um registro que só existe no retorno (`SegmentZ`) também cabe aqui, em vez de em `Record`.
+
+`ForReturn` devolve o `Layout` com que um retorno é lido: para cada `RecordKey`, o `ReturnRecord` de `l` quando `l` implementa `ReturnLayout` e o declara, e o `Record` de `l` nos demais casos. Para um `Layout` que não implementa `ReturnLayout`, devolve o próprio `l`. `Name` e `Version` são sempre os de `l`. `ParseReturn`/`ParseReturnWithLayout` já aplicam `ForReturn`; chame-o diretamente só para ler um registro do retorno de outra forma (o header de arquivo, por exemplo) com o mesmo `RecordSpec` que eles usam.
+
 ### `func NewFromJSON` / `func NewFromJSONFile`
 
 ```go
@@ -1025,17 +1041,23 @@ func NewFromJSONFile(path string) (Layout, error)
 
 Constroem um `Layout` a partir de uma descrição em JSON (o mesmo `RecordSpec`/`FieldSpec` dos passos manuais, só que carregados de um arquivo em vez de escritos em Go), sem registrá-lo automaticamente. `NewFromJSONFile` só lê `path` e chama `NewFromJSON`. Nenhuma dependência externa é usada (`encoding/json` é biblioteca padrão).
 
+O descritor tem duas seções de registros:
+
+- `remittance_records`, obrigatória: o layout com que a remessa é escrita. `records`, o nome anterior desta seção, continua aceito, mas não junto com ela.
+- `return_records`, opcional: só os registros que o banco devolve diferente, cada um completo. O retorno é lido com eles, e com `remittance_records` para todo registro que não estiver aqui. O `Layout` devolvido implementa `ReturnLayout`.
+
 Validação, toda feita no carregamento (não só quando o layout é usado depois):
 
 - `name` e `version` são obrigatórios no JSON.
-- toda chave do objeto `records` precisa ser um dos valores de `AllRecordKeys` (`"file_header"`, `"segment_a"`, etc.).
+- `remittance_records` (ou `records`) precisa existir e não pode estar vazio.
+- toda chave das duas seções precisa ser um dos valores de `AllRecordKeys` (`"file_header"`, `"segment_a"`, etc.), e cada registro de `return_records` passa pelas mesmas validações de um registro de `remittance_records`.
 - todo campo precisa de `kind` igual a `"9"`/`"numeric"`, `"X"`/`"alphanumeric"` ou `"D"`/`"document"`, e de uma faixa de colunas válida (`1 <= start <= end <= 240`).
 - um campo nunca pode ter `key` e `const` definidos ao mesmo tempo.
 - todo `key` de campo, quando presente, precisa estar em `AllKeys`.
 - um campo pode definir `"lowercase": true` para ser renderizado em minúsculas (só faz efeito em campo alfanumérico).
 - cada registro precisa passar em `RecordSpec.Validate()` (cobertura de 1 a 240 sem lacuna nem sobreposição).
 
-Toda falha de validação retorna um erro descrevendo o registro e, quando aplicável, o número do campo dentro dele. Veja `NOVO-BANCO.md`, seção "Alternativa: descrevendo o layout em JSON em vez de Go", para o formato completo do arquivo e um exemplo de uso ponta a ponta com `cnab.RegisterLayout`.
+Toda falha de validação retorna um erro descrevendo a seção, o registro e, quando aplicável, o número do campo dentro dele. Veja `NOVO-BANCO.md`, seção "Alternativa: descrevendo o layout em JSON em vez de Go", para o formato completo do arquivo e um exemplo de uso ponta a ponta com `cnab.RegisterLayout`.
 
 ### `type Key` e o vocabulário de chaves semânticas/estruturais
 

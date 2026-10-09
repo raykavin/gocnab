@@ -264,3 +264,164 @@ func TestJSONLoadedLayoutWorksWithEngine(t *testing.T) {
 		t.Fatal("Record(FileHeader) ok = false, want true")
 	}
 }
+
+// splitSectionsJSONLayout declares the same Segmento A twice: as the payer
+// writes it (a const "0" at column 230) and as the bank sends it back (the
+// column left free), plus a Segmento Z that only a return file carries.
+const splitSectionsJSONLayout = `{
+	"name": "split-sections",
+	"version": "001",
+	"remittance_records": {
+		"file_header": {"fields": [{"start":1,"end":240,"kind":"X"}]},
+		"segment_a": {"fields": [
+			{"name": "Filler1", "start": 1, "end": 229, "kind": "X"},
+			{"name": "NotifyFavored", "start": 230, "end": 230, "kind": "X", "const": "0"},
+			{"name": "OccurrenceCodes", "start": 231, "end": 240, "kind": "X", "key": "occurrence_codes"}
+		]}
+	},
+	"return_records": {
+		"segment_a": {"fields": [
+			{"name": "Filler1", "start": 1, "end": 229, "kind": "X"},
+			{"name": "NotifyFavored", "start": 230, "end": 230, "kind": "X"},
+			{"name": "OccurrenceCodes", "start": 231, "end": 240, "kind": "X", "key": "occurrence_codes"}
+		]},
+		"segment_z": {"fields": [
+			{"name": "Filler1", "start": 1, "end": 14, "kind": "X"},
+			{"name": "Authentication", "start": 15, "end": 78, "kind": "X", "key": "authentication"},
+			{"name": "Filler2", "start": 79, "end": 240, "kind": "X"}
+		]}
+	}
+}`
+
+// fieldAt returns the field of spec that starts at column start.
+func fieldAt(t *testing.T, spec RecordSpec, start int) FieldSpec {
+	t.Helper()
+	for _, f := range spec.Fields {
+		if f.Start == start {
+			return f
+		}
+	}
+	t.Fatalf("record %q has no field starting at column %d", spec.Name, start)
+	return FieldSpec{}
+}
+
+func TestNewFromJSONReadsBothRecordSections(t *testing.T) {
+	l, err := NewFromJSON([]byte(splitSectionsJSONLayout))
+	if err != nil {
+		t.Fatalf("NewFromJSON() error = %v", err)
+	}
+	rl, ok := l.(ReturnLayout)
+	if !ok {
+		t.Fatalf("NewFromJSON() returned %T, want a ReturnLayout", l)
+	}
+
+	remittance, ok := rl.Record(SegmentA)
+	if !ok {
+		t.Fatal("Record(SegmentA) ok = false, want true")
+	}
+	if got := fieldAt(t, remittance, 230).Const; got != "0" {
+		t.Errorf("Record(SegmentA) column 230 const = %q, want %q (the remittance keeps writing it)", got, "0")
+	}
+
+	ret, ok := rl.ReturnRecord(SegmentA)
+	if !ok {
+		t.Fatal("ReturnRecord(SegmentA) ok = false, want true")
+	}
+	if got := fieldAt(t, ret, 230).Const; got != "" {
+		t.Errorf("ReturnRecord(SegmentA) column 230 const = %q, want none", got)
+	}
+
+	if _, ok := rl.ReturnRecord(FileHeader); ok {
+		t.Error("ReturnRecord(FileHeader) ok = true, want false (not declared in return_records)")
+	}
+	if _, ok := rl.Record(SegmentZ); ok {
+		t.Error("Record(SegmentZ) ok = true, want false (declared only in return_records)")
+	}
+	if _, ok := rl.ReturnRecord(SegmentZ); !ok {
+		t.Error("ReturnRecord(SegmentZ) ok = false, want true")
+	}
+}
+
+func TestNewFromJSONAcceptsRecordsAsFormerName(t *testing.T) {
+	renamed := strings.Replace(validJSONLayout, `"records"`, `"remittance_records"`, 1)
+
+	for name, data := range map[string]string{"records": validJSONLayout, "remittance_records": renamed} {
+		t.Run(name, func(t *testing.T) {
+			l, err := NewFromJSON([]byte(data))
+			if err != nil {
+				t.Fatalf("NewFromJSON() error = %v", err)
+			}
+			spec, ok := l.Record(FileHeader)
+			if !ok {
+				t.Fatal("Record(FileHeader) ok = false, want true")
+			}
+			if got := fieldAt(t, spec, 9).Key; got != KeyCompanyName {
+				t.Errorf("file_header column 9 key = %q, want %q", got, KeyCompanyName)
+			}
+			if _, ok := l.(ReturnLayout).ReturnRecord(FileHeader); ok {
+				t.Error("ReturnRecord(FileHeader) ok = true, want false (no return_records)")
+			}
+		})
+	}
+}
+
+func TestNewFromJSONRejectsBothRemittanceSectionNames(t *testing.T) {
+	data := `{
+		"name": "x", "version": "001",
+		"records": {"file_header": {"fields": [{"start":1,"end":240,"kind":"X"}]}},
+		"remittance_records": {"file_header": {"fields": [{"start":1,"end":240,"kind":"X"}]}}
+	}`
+	_, err := NewFromJSON([]byte(data))
+	if err == nil {
+		t.Fatal("NewFromJSON() error = nil, want an error when both records and remittance_records are set")
+	}
+	if !strings.Contains(err.Error(), "remittance_records") || !strings.Contains(err.Error(), `"records"`) {
+		t.Fatalf("error %q does not name both sections", err)
+	}
+}
+
+func TestNewFromJSONRequiresRemittanceRecords(t *testing.T) {
+	cases := map[string]string{
+		"only return_records": `{"name":"x","version":"001","return_records":{"segment_z":{"fields":[{"start":1,"end":240,"kind":"X"}]}}}`,
+		"empty":               `{"name":"x","version":"001","remittance_records":{}}`,
+	}
+	for name, data := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := NewFromJSON([]byte(data))
+			if err == nil {
+				t.Fatal("NewFromJSON() error = nil, want an error without remittance records")
+			}
+			if !strings.Contains(err.Error(), "remittance_records") {
+				t.Fatalf("error %q does not name the missing section", err)
+			}
+		})
+	}
+}
+
+func TestNewFromJSONValidatesReturnRecords(t *testing.T) {
+	cases := []struct {
+		name    string
+		records string
+		mention string
+	}{
+		{"unknown record key", `{"not_a_real_record": {"fields": [{"start":1,"end":240,"kind":"X"}]}}`, "not_a_real_record"},
+		{"gap", `{"segment_a": {"fields": [{"start":1,"end":10,"kind":"X"},{"start":15,"end":240,"kind":"X"}]}}`, "gap"},
+		{"unknown key", `{"segment_a": {"fields": [{"start":1,"end":240,"kind":"X","key":"not_a_real_key"}]}}`, "not_a_real_key"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			data := `{
+				"name": "x", "version": "001",
+				"remittance_records": {"file_header": {"fields": [{"start":1,"end":240,"kind":"X"}]}},
+				"return_records": ` + c.records + `
+			}`
+			_, err := NewFromJSON([]byte(data))
+			if err == nil {
+				t.Fatalf("NewFromJSON() error = nil, want a %s error in return_records", c.name)
+			}
+			if !strings.Contains(err.Error(), "return_records") || !strings.Contains(err.Error(), c.mention) {
+				t.Fatalf("error %q does not point at return_records and %q", err, c.mention)
+			}
+		})
+	}
+}
